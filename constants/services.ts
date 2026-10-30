@@ -1,0 +1,400 @@
+// Service & Category Definitions
+
+export interface Service {
+  id: string;
+  name: string;
+  price: number;
+  originalPrice: number;
+  rating: number;
+  ratingCount: string;
+  iconName: string;
+  iconBg: string;
+  iconColor: string;
+  category: 'cleaning' | 'kitchen' | 'laundry' | 'exterior' | 'repairs';
+  description: string;
+  duration: string;
+  imageUrl: string;
+  isNew?: boolean;
+  popular?: boolean;
+}
+
+export interface FestivePack {
+  id: string;
+  name: string;
+  price: number;
+  originalPrice: number;
+  duration: string;
+  isNew: boolean;
+  iconName: string;
+  gradientColors: [string, string];
+  description: string;
+  imageUrl: string;
+  badge?: string;
+}
+
+export interface HelpTopic {
+  id: string;
+  title: string;
+  description: string;
+  iconName: string;
+  iconColor: string;
+  iconBg: string;
+}
+
+export const CATEGORIES = [
+  { id: 'all', label: 'All Services', icon: 'grid-outline' },
+  { id: 'cleaning', label: 'Cleaning', icon: 'sparkles-outline' },
+  { id: 'kitchen', label: 'Kitchen & Prep', icon: 'restaurant-outline' },
+  { id: 'laundry', label: 'Laundry & Iron', icon: 'shirt-outline' },
+  { id: 'exterior', label: 'Car & Plants', icon: 'leaf-outline' },
+];
+
+export const SERVICES: Service[] = [
+  {
+    id: '1',
+    name: 'Hourly Home Help',
+    price: 49,
+    originalPrice: 149,
+    rating: 4.9,
+    ratingCount: '240k',
+    iconName: 'time-outline',
+    iconBg: '#EFF6FF',
+    iconColor: '#2563EB',
+    category: 'cleaning',
+    description: 'Expert assistant for multi-task household help by the hour.',
+    duration: '60 mins',
+    imageUrl: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=600&q=80',
+    popular: true,
+  },
+  {
+    id: '2',
+    name: 'Bathroom Deep Clean',
+    price: 199,
+    originalPrice: 349,
+    rating: 4.9,
+    ratingCount: '78k',
+    iconName: 'water-outline',
+    iconBg: '#ECFDF5',
+    iconColor: '#059669',
+    category: 'cleaning',
+    description: 'Tile descaling, stain removal, mirror buffing and disinfection.',
+    duration: '45 mins',
+    imageUrl: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=600&q=80',
+    popular: true,
+  },
+  {
+    id: '3',
+    name: 'Dusting & Surface Polish',
+    price: 79,
+    originalPrice: 199,
+    rating: 4.8,
+    ratingCount: '42k',
+    iconName: 'sparkles-outline',
+    iconBg: '#FDF2F8',
+    iconColor: '#DB2777',
+    category: 'cleaning',
+    description: 'Complete furniture dusting, TV unit, tables & decor wiping.',
+    duration: '40 mins',
+    imageUrl: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=600&q=80',
+  },
+  {
+    id: '4',
+    name: 'Sweeping & Mopping',
+    price: 89,
+    originalPrice: 199,
+    rating: 4.9,
+    ratingCount: '85k',
+    iconName: 'color-wand-outline',
+    iconBg: '#F0FDF4',
+    iconColor: '#16A34A',
+    category: 'cleaning',
+    description: 'Corner-to-corner floor sweeping with fragrant antiseptic mop.',
+    duration: '45 mins',
+    imageUrl: 'https://images.unsplash.com/photo-1527515637462-cff94eecc1ac?auto=format&fit=crop&w=600&q=80',
+    popular: true,
+  },
+  {
+    id: '5',
+    name: 'Utensil Washing & Sink',
+    price: 69,
+    originalPrice: 149,
+    rating: 4.8,
+    ratingCount: '62k',
+    iconName: 'cafe-outline',
+    iconBg: '#F0FDFA',
+    iconColor: '#0D9488',
+    category: 'kitchen',
+    description: 'Scratch-free wash for all dishes, cooker, pans & sink rinse.',
+    duration: '35 mins',
+    imageUrl: 'https://images.unsplash.com/photo-1585837575652-267c041d77d4?auto=format&fit=crop&w=600&q=80',
+  },
+  {
+    id: '6',
+    name: 'Kitchen Deep Clean',
+    price: 249,
+    originalPrice: 499,
+    rating: 4.9,
+    ratingCount: '35k',
+    iconName: 'restaurant-outline',
+    iconBg: '#FFFBEB',
+    iconColor: '#D97706',
+    category: 'kitchen',
+    description: 'Degreasing of gas stove, exhaust, countertops & tiles.',
+    duration: '60 mins',
+    imageUrl: 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&w=600&q=80',
+    popular: true,
+  },
+  {
+    id: '7',
+    name: 'Kitchen Meal Prep',
+    price: 99,
+    originalPrice: 199,
+    rating: 4.9,
+    ratingCount: '28k',
+    iconName: 'nutrition-outline',
+    iconBg: '#FEF3C7',
+    iconColor: '#B45309',
+    category: 'kitchen',
+    description: 'Vegetable chopping, dough kneading & salad preparation.',
+    duration: '40 mins',
+    imageUrl: 'https://images.unsplash.com/photo-1547592180-85f173990554?auto=format&fit=crop&w=600&q=80',
+  },
+  {
+    id: '8',
+    name: 'Balcony Washing',
+    price: 99,
+    originalPrice: 220,
+    rating: 4.8,
+    ratingCount: '33k',
+    iconName: 'sunny-outline',
+    iconBg: '#FEF9C3',
+    iconColor: '#CA8A04',
+    category: 'cleaning',
+    description: 'Floor scrub, railing wipe-down and drain clearing.',
+    duration: '35 mins',
+    imageUrl: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=600&q=80',
+  },
+  {
+    id: '9',
+    name: 'Ceiling Fan Cleaning',
+    price: 49,
+    originalPrice: 120,
+    rating: 4.9,
+    ratingCount: '31k',
+    iconName: 'sync-outline',
+    iconBg: '#F3E8FF',
+    iconColor: '#7C3AED',
+    category: 'cleaning',
+    description: 'Dust-free blade wipe, motor cover polish with extension gear.',
+    duration: '20 mins',
+    imageUrl: 'https://images.unsplash.com/photo-1615873968403-89e068629265?auto=format&fit=crop&w=600&q=80',
+  },
+  {
+    id: '10',
+    name: 'Ironing & Garment Fold',
+    price: 69,
+    originalPrice: 150,
+    rating: 4.8,
+    ratingCount: '29k',
+    iconName: 'shirt-outline',
+    iconBg: '#F1F5F9',
+    iconColor: '#475569',
+    category: 'laundry',
+    description: 'Crisp steam ironing with neat closet-ready folding.',
+    duration: '30 mins',
+    imageUrl: 'https://images.unsplash.com/photo-1517677208171-0bc6725a3e60?auto=format&fit=crop&w=600&q=80',
+    popular: true,
+  },
+  {
+    id: '11',
+    name: 'Kitchen Cabinets Polish',
+    price: 299,
+    originalPrice: 650,
+    rating: 4.9,
+    ratingCount: '24k',
+    iconName: 'file-tray-stacked-outline',
+    iconBg: '#FFF7ED',
+    iconColor: '#EA580C',
+    category: 'kitchen',
+    description: 'Interior & exterior wipe down, shelf reorganization.',
+    duration: '75 mins',
+    imageUrl: 'https://images.unsplash.com/photo-1507089947368-19c1da9775ae?auto=format&fit=crop&w=600&q=80',
+  },
+  {
+    id: '12',
+    name: 'Complete Wardrobe Organize',
+    price: 299,
+    originalPrice: 699,
+    rating: 4.9,
+    ratingCount: '25k',
+    iconName: 'layers-outline',
+    iconBg: '#F8FAFC',
+    iconColor: '#334155',
+    category: 'laundry',
+    description: 'Declutter, category sorting, folding and hanger arrangement.',
+    duration: '75 mins',
+    imageUrl: 'https://images.unsplash.com/photo-1558997519-83ea9252def8?auto=format&fit=crop&w=600&q=80',
+  },
+  {
+    id: '13',
+    name: 'Window & Mesh Cleaning',
+    price: 89,
+    originalPrice: 199,
+    rating: 4.8,
+    ratingCount: '28k',
+    iconName: 'browsers-outline',
+    iconBg: '#E0F2FE',
+    iconColor: '#0284C7',
+    category: 'cleaning',
+    description: 'Streak-free glass polish and dust vacuuming from slider tracks.',
+    duration: '35 mins',
+    imageUrl: 'https://images.unsplash.com/photo-1505691938895-1758d7feb511?auto=format&fit=crop&w=600&q=80',
+  },
+  {
+    id: '14',
+    name: 'Laundry Wash & Dry',
+    price: 79,
+    originalPrice: 180,
+    rating: 4.9,
+    ratingCount: '26k',
+    iconName: 'basket-outline',
+    iconBg: '#EEF2FF',
+    iconColor: '#4F46E5',
+    category: 'laundry',
+    description: 'Machine cycle load, detergent dosing & clothes line drying.',
+    duration: '30 mins',
+    imageUrl: 'https://images.unsplash.com/photo-1545173168-9f1947eebb7f?auto=format&fit=crop&w=600&q=80',
+  },
+  {
+    id: '15',
+    name: 'Refrigerator Deep Sanitize',
+    price: 149,
+    originalPrice: 350,
+    rating: 4.9,
+    ratingCount: '27k',
+    iconName: 'snow-outline',
+    iconBg: '#F0FDFA',
+    iconColor: '#0F766E',
+    category: 'kitchen',
+    description: 'Shelves removal, anti-bacterial wipedown and deodorization.',
+    duration: '45 mins',
+    imageUrl: 'https://images.unsplash.com/photo-1571175443880-49e1d25b2bc5?auto=format&fit=crop&w=600&q=80',
+  },
+  {
+    id: '16',
+    name: 'Car Exterior Wash & Polish',
+    price: 169,
+    originalPrice: 349,
+    rating: 4.9,
+    ratingCount: '12k',
+    iconName: 'car-sport-outline',
+    iconBg: '#FEF2F2',
+    iconColor: '#DC2626',
+    category: 'exterior',
+    description: 'High-gloss shampoo wash, glass treatment and tyre shine.',
+    duration: '45 mins',
+    imageUrl: 'https://images.unsplash.com/photo-1520340356584-f9917d1eea6f?auto=format&fit=crop&w=600&q=80',
+    isNew: true,
+  },
+  {
+    id: '17',
+    name: 'Balcony Garden & Plant Care',
+    price: 149,
+    originalPrice: 299,
+    rating: 4.9,
+    ratingCount: '9k',
+    iconName: 'leaf-outline',
+    iconBg: '#F0FDF4',
+    iconColor: '#15803D',
+    category: 'exterior',
+    description: 'Pot aerating, pruning dead leaves, watering and fertilizing.',
+    duration: '45 mins',
+    imageUrl: 'https://images.unsplash.com/photo-1585320806297-9794b3e4eeae?auto=format&fit=crop&w=600&q=80',
+    isNew: true,
+  },
+];
+
+export const FESTIVE_PACKS: FestivePack[] = [
+  {
+    id: '1',
+    name: 'Full Home Festive Makeover',
+    price: 499,
+    originalPrice: 999,
+    duration: '3 Hours',
+    isNew: true,
+    iconName: 'sparkles',
+    gradientColors: ['#0B5335', '#042F2C'],
+    description: 'Complete deep cleaning for Living Room, Kitchen & 2 Bathrooms.',
+    imageUrl: 'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=800&q=80',
+    badge: 'BESTSELLER',
+  },
+  {
+    id: '2',
+    name: 'Express Party Cleanup',
+    price: 249,
+    originalPrice: 499,
+    duration: '90 Mins',
+    isNew: true,
+    iconName: 'flash',
+    gradientColors: ['#1E293B', '#0F172A'],
+    description: 'Fast cleanup before or after guests arrive: dishes, living room & trash.',
+    imageUrl: 'https://images.unsplash.com/photo-1584820927498-cfe5211fd8bf?auto=format&fit=crop&w=800&q=80',
+    badge: 'FAST ARRIVAL',
+  },
+  {
+    id: '3',
+    name: 'Puja Mandir Special Clean',
+    price: 199,
+    originalPrice: 399,
+    duration: '60 Mins',
+    isNew: false,
+    iconName: 'flame',
+    gradientColors: ['#9A3412', '#7C2D12'],
+    description: 'Brass & copper item polishing, marble cleanup & fresh floral decor setup.',
+    imageUrl: 'https://images.unsplash.com/photo-1609137144813-7d9921338f24?auto=format&fit=crop&w=800&q=80',
+    badge: 'DEVOTIONAL',
+  },
+];
+
+export const HELP_TOPICS: HelpTopic[] = [
+  {
+    id: '1',
+    title: 'Bookings & Scheduling',
+    description: 'Reschedule, cancellations and pro arrival tracking',
+    iconName: 'calendar-outline',
+    iconColor: '#2563EB',
+    iconBg: '#EFF6FF',
+  },
+  {
+    id: '2',
+    title: 'Payments & Refunds',
+    description: 'UPI, Razorpay, cash on delivery and instant refunds',
+    iconName: 'card-outline',
+    iconColor: '#059669',
+    iconBg: '#ECFDF5',
+  },
+  {
+    id: '3',
+    title: 'Tidara Pass & Wallet',
+    description: 'VIP visit credits, wallet recharge and cashback',
+    iconName: 'wallet-outline',
+    iconColor: '#7C3AED',
+    iconBg: '#F3E8FF',
+  },
+  {
+    id: '4',
+    title: 'Service Guarantee & Safety',
+    description: '100% background-verified professionals and damage cover',
+    iconName: 'shield-checkmark-outline',
+    iconColor: '#D97706',
+    iconBg: '#FFFBEB',
+  },
+  {
+    id: '5',
+    title: 'Account & Addresses',
+    description: 'Edit phone, name, email and saved home addresses',
+    iconName: 'person-outline',
+    iconColor: '#475569',
+    iconBg: '#F1F5F9',
+  },
+];
