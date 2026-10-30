@@ -5,19 +5,19 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, formatCurrency } from '../constants/colors';
 import { useAppStore } from '../store/useAppStore';
 import { createRazorpayOrder, getRazorpayCheckoutHTML } from '../lib/razorpay';
-import { createBooking } from '../lib/supabase';
+import { createBooking, updateUserProfile, normalizePhone } from '../lib/supabase';
 import RazorpayWebView from '../components/RazorpayWebView';
-import { SERVICES } from '../constants/services';
+import { SERVICES, FESTIVE_PACKS } from '../constants/services';
 
 type PaymentMethod = 'upi' | 'phonepe' | 'gpay' | 'paytm' | 'card' | 'cod' | 'wallet';
 
@@ -36,47 +36,117 @@ export default function PaymentScreen() {
   const [loading, setLoading] = useState(false);
   const [razorpayHtml, setRazorpayHtml] = useState<string | null>(null);
 
-  const { cartItems, clearCart, user, walletBalance, setWalletBalance } = useAppStore();
+  const {
+    cartItems,
+    clearCart,
+    user,
+    walletBalance,
+    setWalletBalance,
+    location,
+    bookingMode,
+    scheduledDays,
+    scheduledSlot,
+    discountAmount,
+  } = useAppStore();
 
-  const itemTotal =
-    cartItems.reduce((sum, i) => sum + i.quantity * 299, 0) || 299;
-  const gst = parseFloat((itemTotal * GST_RATE).toFixed(2));
-  const total = itemTotal + SERVICE_FEE + gst;
+  const cartDetails = cartItems
+    .map((item) => {
+      if (
+        item.serviceId.startsWith('pack_') ||
+        item.serviceId === 'pack_1' ||
+        item.serviceId === 'pack_2' ||
+        item.serviceId === 'pack_3'
+      ) {
+        const pack = FESTIVE_PACKS.find(
+          (p) => p.id === item.serviceId || p.id === item.serviceId.replace('pack_', '')
+        );
+        if (!pack) return null;
+        return {
+          id: item.serviceId,
+          name: pack.name,
+          price: item.unitPrice ?? pack.price,
+          quantity: item.quantity,
+          duration: pack.duration,
+        };
+      }
+      const svc = SERVICES.find((s) => s.id === item.serviceId);
+      if (!svc) return null;
+      return {
+        id: item.serviceId,
+        name: svc.name,
+        price: item.unitPrice ?? svc.price,
+        quantity: item.quantity,
+        duration: item.durationMinutes ? `${item.durationMinutes} mins` : svc.duration,
+      };
+    })
+    .filter(Boolean) as Array<{
+    id: string;
+    name: string;
+    price: number;
+    quantity: number;
+    duration: string;
+  }>;
+
+  const itemTotal = cartDetails.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const discount = Math.min(discountAmount, itemTotal);
+  const taxable = Math.max(0, itemTotal - discount);
+  const gst = Math.round(taxable * GST_RATE);
+  const total = cartDetails.length > 0 ? taxable + SERVICE_FEE + gst : 0;
   const totalPaise = Math.round(total * 100);
 
-  /* Save booking to Supabase */
-  const saveBookingToDB = async (paymentMethod: string) => {
-    if (!user?.phone) return;
-    const phone = user.phone.startsWith('+91')
-      ? user.phone
-      : `+91${user.phone}`;
-    const now = new Date().toLocaleString('en-IN', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    });
+  if (cartDetails.length === 0) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar style="dark" />
+        <View style={styles.emptyContainer}>
+          <Ionicons name="cart-outline" size={54} color={Colors.textMuted} />
+          <Text style={styles.emptyTitle}>No Services in Cart</Text>
+          <Text style={styles.emptySubtitle}>
+            Please select services from the Home screen before visiting the checkout page.
+          </Text>
+          <TouchableOpacity
+            style={styles.returnBtn}
+            onPress={() => router.replace('/(tabs)')}
+          >
+            <Text style={styles.returnBtnText}>Browse Services</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
-    for (const item of cartItems) {
-      const svc = SERVICES.find((s) => s.id === item.serviceId);
-      await createBooking({
-        user_phone: phone,
-        service_id: item.serviceId,
-        service_name: svc?.name ?? 'Tidara Express Service',
-        price: total,
-        status: 'upcoming',
-        scheduled_at: now,
-        address: 'Default address',
-      });
+  /* Save booking to Supabase with real prices and details */
+  const saveBookingToDB = async (
+    paymentMethod: string,
+    paymentId?: string,
+    orderId?: string
+  ) => {
+    if (!user?.phone) return;
+    const phone = normalizePhone(user.phone);
+
+    let scheduledDisplay = 'Today (Express 15-Min)';
+    if (bookingMode === 'Recurring') {
+      scheduledDisplay = `Recurring: ${scheduledDays?.join(', ') || 'Weekly'} @ ${scheduledSlot || '9:00 AM'}`;
+    } else if (bookingMode === 'Scheduled') {
+      scheduledDisplay = `Scheduled Slot: ${scheduledSlot || 'Standard Slot'}`;
     }
 
-    if (cartItems.length === 0) {
+    const deliveryAddress = location?.address || 'Confirmed Service Address';
+
+    for (const item of cartDetails) {
       await createBooking({
         user_phone: phone,
-        service_id: 'general',
-        service_name: 'Tidara Home Service',
-        price: total,
+        service_id: item.id,
+        service_name: item.name,
+        price: item.price * item.quantity,
+        quantity: item.quantity,
+        duration: item.duration,
         status: 'upcoming',
-        scheduled_at: now,
-        address: 'Default address',
+        scheduled_at: scheduledDisplay,
+        address: deliveryAddress,
+        payment_method: paymentMethod,
+        payment_id: paymentId,
+        order_id: orderId,
       });
     }
   };
@@ -121,6 +191,9 @@ export default function PaymentScreen() {
     try {
       const remaining = walletBalance - total;
       setWalletBalance(remaining);
+      if (user?.phone) {
+        await updateUserProfile(user.phone, { wallet_balance: remaining });
+      }
       await saveBookingToDB('Tidara Wallet');
       clearCart();
       Alert.alert(
@@ -146,19 +219,19 @@ export default function PaymentScreen() {
   const handleRazorpay = async () => {
     setLoading(true);
     try {
-      const receipt = `tid_${Date.now()}`;
+      const receipt = `tid_${Date.now()}`.slice(0, 40);
       const order = await createRazorpayOrder(totalPaise, receipt);
       const userName = user
         ? `${user.firstName} ${user.lastName ?? ''}`.trim()
         : 'Customer';
-      const phone = user?.phone ?? '';
+      const phone = user?.phone ? normalizePhone(user.phone) : '';
 
       const html = getRazorpayCheckoutHTML({
         orderId: order.id,
         amount: order.amount,
         name: userName,
-        phone: phone.startsWith('+') ? phone : `+91${phone}`,
-        description: 'Tidara Verified Home Services',
+        phone,
+        description: `${cartDetails.length} Tidara Home Service(s)`,
       });
       setRazorpayHtml(html);
     } catch (err: any) {
@@ -181,9 +254,9 @@ export default function PaymentScreen() {
     }
   };
 
-  const onPaymentSuccess = async () => {
+  const onPaymentSuccess = async (data: { paymentId: string; orderId?: string }) => {
     setRazorpayHtml(null);
-    await saveBookingToDB('Razorpay Online');
+    await saveBookingToDB('Razorpay Online', data.paymentId, data.orderId);
     clearCart();
     Alert.alert(
       'Payment Successful! 🎉',
@@ -195,7 +268,7 @@ export default function PaymentScreen() {
   const onPaymentFailure = (error: string | null, cancelled?: boolean) => {
     setRazorpayHtml(null);
     if (!cancelled) {
-      Alert.alert('Payment Cancelled', error ?? 'Transaction was not completed.');
+      Alert.alert('Payment Notice', error ?? 'Transaction was not completed.');
     }
   };
 
@@ -205,7 +278,12 @@ export default function PaymentScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
           <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Select Payment</Text>
@@ -222,6 +300,9 @@ export default function PaymentScreen() {
           <View>
             <Text style={styles.amountLabel}>Total Payable Amount</Text>
             <Text style={styles.amountValue}>{formatCurrency(total)}</Text>
+            {discount > 0 && (
+              <Text style={styles.discountTag}>Saved {formatCurrency(discount)} with coupon</Text>
+            )}
           </View>
 
           <View style={styles.secureBadge}>
@@ -238,6 +319,8 @@ export default function PaymentScreen() {
           ]}
           onPress={() => setSelectedMethod('wallet')}
           activeOpacity={0.85}
+          accessibilityRole="radio"
+          accessibilityState={{ selected: selectedMethod === 'wallet' }}
         >
           <View style={styles.optionLeft}>
             <View style={[styles.optionIconBox, { backgroundColor: '#ECFDF5' }]}>
@@ -259,7 +342,7 @@ export default function PaymentScreen() {
 
         {/* UPI Apps Grid */}
         <View style={styles.sectionContainer}>
-          <Text style={styles.sectionTitle}>UPI (Fast & Zero Surcharge)</Text>
+          <Text style={styles.sectionTitle}>UPI (Fast & Direct)</Text>
 
           <View style={styles.upiGrid}>
             {UPI_APPS.map((app) => {
@@ -270,6 +353,8 @@ export default function PaymentScreen() {
                   style={[styles.upiCard, isSelected && styles.upiCardSelected]}
                   onPress={() => setSelectedMethod(app.key)}
                   activeOpacity={0.8}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: isSelected }}
                 >
                   <View style={[styles.upiIconBox, { backgroundColor: `${app.color}15` }]}>
                     <Ionicons name={app.icon} size={22} color={app.color} />
@@ -294,6 +379,8 @@ export default function PaymentScreen() {
           ]}
           onPress={() => setSelectedMethod('cod')}
           activeOpacity={0.85}
+          accessibilityRole="radio"
+          accessibilityState={{ selected: selectedMethod === 'cod' }}
         >
           <View style={styles.optionLeft}>
             <View style={[styles.optionIconBox, { backgroundColor: '#FEF3C7' }]}>
@@ -301,7 +388,7 @@ export default function PaymentScreen() {
             </View>
             <View>
               <Text style={styles.optionTitle}>Cash On Delivery (COD)</Text>
-              <Text style={styles.optionSub}>Pay pro in cash after service completion</Text>
+              <Text style={styles.optionSub}>Pay expert in cash or UPI after service</Text>
             </View>
           </View>
 
@@ -318,6 +405,8 @@ export default function PaymentScreen() {
           ]}
           onPress={() => setSelectedMethod('card')}
           activeOpacity={0.85}
+          accessibilityRole="radio"
+          accessibilityState={{ selected: selectedMethod === 'card' }}
         >
           <View style={styles.optionLeft}>
             <View style={[styles.optionIconBox, { backgroundColor: '#EFF6FF' }]}>
@@ -325,7 +414,7 @@ export default function PaymentScreen() {
             </View>
             <View>
               <Text style={styles.optionTitle}>Credit / Debit Cards</Text>
-              <Text style={styles.optionSub}>Visa, Mastercard, RuPay, Amex</Text>
+              <Text style={styles.optionSub}>Visa, Mastercard, RuPay, NetBanking</Text>
             </View>
           </View>
 
@@ -336,9 +425,9 @@ export default function PaymentScreen() {
 
         {/* Trust Notice */}
         <View style={styles.guaranteeBox}>
-          <Ionicons name="lock-closed" size={16} color="#64748B" />
+          <Ionicons name="shield-checkmark" size={16} color="#059669" />
           <Text style={styles.guaranteeText}>
-            Payments are 100% secure. You are backed by the Tidara Happiness Guarantee.
+            100% Secure Checkout backed by the Tidara Satisfaction Guarantee.
           </Text>
         </View>
       </ScrollView>
@@ -350,6 +439,8 @@ export default function PaymentScreen() {
           onPress={handleProceed}
           disabled={loading}
           activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel={`Confirm payment of ${formatCurrency(total)}`}
         >
           {loading ? (
             <ActivityIndicator color="#FFFFFF" size="small" />
@@ -401,12 +492,12 @@ const styles = StyleSheet.create({
   scrollContent: { padding: 16, gap: 14, paddingBottom: 40 },
   amountCard: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
-    padding: 18,
-    borderWidth: 1,
+    padding: 16,
+    borderWidth: 1.5,
     borderColor: '#E2E8F0',
   },
   amountLabel: {
@@ -417,7 +508,13 @@ const styles = StyleSheet.create({
   amountValue: {
     fontSize: 26,
     fontWeight: '900',
-    color: Colors.textPrimary,
+    color: Colors.primary,
+    marginTop: 2,
+  },
+  discountTag: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#059669',
     marginTop: 2,
   },
   secureBadge: {
@@ -426,7 +523,7 @@ const styles = StyleSheet.create({
     gap: 4,
     backgroundColor: '#ECFDF5',
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 5,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#A7F3D0',
@@ -436,76 +533,30 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#059669',
   },
-  sectionContainer: {
-    gap: 10,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: Colors.textPrimary,
-    marginLeft: 2,
-  },
-  upiGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  upiCard: {
-    width: '48%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-    alignItems: 'center',
-    gap: 8,
-    position: 'relative',
-  },
-  upiCardSelected: {
-    borderColor: Colors.primary,
-    backgroundColor: '#ECFDF5',
-  },
-  upiIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  upiLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-  },
-  upiSelectedBadge: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-  },
   paymentOptionCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 16,
+    padding: 14,
     borderWidth: 1.5,
     borderColor: '#E2E8F0',
   },
   paymentOptionSelected: {
     borderColor: Colors.primary,
-    backgroundColor: '#ECFDF5',
+    backgroundColor: '#F0FDF4',
   },
   optionLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 12,
     flex: 1,
   },
   optionIconBox: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -515,14 +566,14 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
   optionSub: {
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.textSecondary,
     marginTop: 2,
   },
   radioCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     borderWidth: 2,
     borderColor: '#CBD5E1',
     alignItems: 'center',
@@ -537,18 +588,67 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: Colors.primary,
   },
+  sectionContainer: {
+    gap: 8,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+    marginLeft: 4,
+  },
+  upiGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  upiCard: {
+    width: '48%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 12,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    gap: 8,
+    position: 'relative',
+  },
+  upiCardSelected: {
+    borderColor: Colors.primary,
+    backgroundColor: '#F0FDF4',
+  },
+  upiIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  upiLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  upiSelectedBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+  },
   guaranteeBox: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 8,
-    marginTop: 6,
+    backgroundColor: '#ECFDF5',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
   },
   guaranteeText: {
     flex: 1,
     fontSize: 11,
-    color: Colors.textMuted,
-    lineHeight: 16,
+    color: '#065F46',
+    fontWeight: '600',
   },
   footer: {
     paddingHorizontal: 16,
@@ -570,7 +670,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   payBtnDisabled: {
-    backgroundColor: Colors.gray400,
+    opacity: 0.6,
   },
   payBtnContent: {
     flexDirection: 'row',
@@ -578,8 +678,38 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   payBtnText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    gap: 12,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  returnBtn: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  returnBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

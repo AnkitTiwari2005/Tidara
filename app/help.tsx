@@ -1,13 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Linking,
+  Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,8 +16,30 @@ import { Colors } from '../constants/colors';
 import { HELP_TOPICS } from '../constants/services';
 
 export default function HelpScreen() {
-  const handleWhatsAppSupport = () => {
-    Linking.openURL('https://wa.me/919999999999?text=Hi%20Tidara%20Support,%20I%20need%20help%20with%20my%20booking.');
+  const [expandedTopicId, setExpandedTopicId] = useState<string | null>('1');
+
+  const handleWhatsAppSupport = async () => {
+    const url = 'https://wa.me/918000000000?text=Hi%20Tidara%20Support,%20I%20need%20assistance%20with%20my%20booking.';
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (canOpen) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert('Contact Support', 'Please reach our 24/7 support desk at support@tidara.com');
+      }
+    } catch {
+      Alert.alert('Contact Support', 'Please reach our 24/7 support desk at support@tidara.com');
+    }
+  };
+
+  const handleCallHelpline = () => {
+    Linking.openURL('tel:18001209999').catch(() => {
+      Alert.alert('Helpline', 'Call our toll-free customer helpline: 1800-120-9999');
+    });
+  };
+
+  const toggleTopic = (id: string) => {
+    setExpandedTopicId((prev) => (prev === id ? null : id));
   };
 
   return (
@@ -25,7 +48,12 @@ export default function HelpScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
           <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Help & Support</Text>
@@ -42,6 +70,8 @@ export default function HelpScreen() {
           style={styles.supportCard}
           onPress={handleWhatsAppSupport}
           activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Chat with Tidara Assistant on WhatsApp"
         >
           <View style={styles.supportLeft}>
             <View style={styles.whatsappIconCircle}>
@@ -50,7 +80,7 @@ export default function HelpScreen() {
             <View style={styles.supportTextContainer}>
               <Text style={styles.supportTitle}>Chat with Tidara Assistant</Text>
               <Text style={styles.supportSubtitle}>
-                Instant replies 24/7 on WhatsApp for any issue.
+                Instant replies on WhatsApp for bookings & support.
               </Text>
             </View>
           </View>
@@ -62,49 +92,76 @@ export default function HelpScreen() {
           <Text style={styles.sectionTitle}>Refunds & Payment Disputes</Text>
           <View style={styles.emptyRefunds}>
             <View style={styles.emptyIconCircle}>
-              <Ionicons name="receipt-outline" size={32} color={Colors.textMuted} />
+              <Ionicons name="shield-checkmark-outline" size={30} color={Colors.primary} />
             </View>
-            <Text style={styles.emptyRefundTitle}>No Active Refunds</Text>
+            <Text style={styles.emptyRefundTitle}>100% Refund Protection</Text>
             <Text style={styles.emptyRefundText}>
-              Any cancelled or disputed visit refunds will be credited within 2 hours.
+              Any cancelled visit before pro arrival is credited back to your original payment method or wallet within 2-4 hours.
             </Text>
           </View>
         </View>
 
-        {/* Help Topics */}
+        {/* Help Topics Accordion */}
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Frequently Asked Topics</Text>
+          <Text style={styles.sectionTitle}>Frequently Asked Questions</Text>
           <View style={styles.topicsList}>
-            {HELP_TOPICS.map((topic, index) => (
-              <TouchableOpacity
-                key={topic.id}
-                style={[
-                  styles.topicItem,
-                  index < HELP_TOPICS.length - 1 && styles.topicItemBorder,
-                ]}
-                onPress={handleWhatsAppSupport}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.topicIconBox, { backgroundColor: topic.iconBg }]}>
-                  <Ionicons name={topic.iconName as any} size={20} color={topic.iconColor} />
+            {HELP_TOPICS.map((topic, index) => {
+              const isExpanded = expandedTopicId === topic.id;
+              return (
+                <View
+                  key={topic.id}
+                  style={[
+                    styles.topicItemContainer,
+                    index < HELP_TOPICS.length - 1 && styles.topicItemBorder,
+                  ]}
+                >
+                  <TouchableOpacity
+                    style={styles.topicHeader}
+                    onPress={() => toggleTopic(topic.id)}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: isExpanded }}
+                  >
+                    <View style={[styles.topicIconBox, { backgroundColor: topic.iconBg }]}>
+                      <Ionicons name={topic.iconName as any} size={20} color={topic.iconColor} />
+                    </View>
+                    <View style={styles.topicInfo}>
+                      <Text style={styles.topicTitle}>{topic.title}</Text>
+                      <Text style={styles.topicDesc}>{topic.description}</Text>
+                    </View>
+                    <Ionicons
+                      name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                      size={18}
+                      color={Colors.textMuted}
+                    />
+                  </TouchableOpacity>
+
+                  {isExpanded && (
+                    <View style={styles.answerBox}>
+                      <Text style={styles.answerText}>{topic.answer}</Text>
+                    </View>
+                  )}
                 </View>
-                <View style={styles.topicInfo}>
-                  <Text style={styles.topicTitle}>{topic.title}</Text>
-                  <Text style={styles.topicDesc}>{topic.description}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
-              </TouchableOpacity>
-            ))}
+              );
+            })}
           </View>
         </View>
 
         {/* Emergency Call Box */}
-        <View style={styles.emergencyBox}>
-          <Ionicons name="shield-checkmark" size={18} color="#059669" />
-          <Text style={styles.emergencyText}>
-            Tidara Trust & Safety Helpline: Available 8 AM to 11 PM daily.
-          </Text>
-        </View>
+        <TouchableOpacity
+          style={styles.emergencyBox}
+          onPress={handleCallHelpline}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Call Tidara Safety Helpline"
+        >
+          <Ionicons name="call" size={18} color="#059669" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.emergencyTitle}>Customer Helpline (Toll-Free)</Text>
+            <Text style={styles.emergencyText}>Tap to call: 1800-120-9999 • 8 AM to 11 PM daily</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color="#059669" />
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -139,10 +196,6 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: '#DCFCE7',
-    shadowColor: '#10B981',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
     elevation: 2,
   },
   supportLeft: {
@@ -185,14 +238,14 @@ const styles = StyleSheet.create({
   },
   emptyRefunds: {
     alignItems: 'center',
-    paddingVertical: 20,
+    paddingVertical: 16,
     gap: 6,
   },
   emptyIconCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#F8FAFC',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#ECFDF5',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 4,
@@ -204,28 +257,30 @@ const styles = StyleSheet.create({
   },
   emptyRefundText: {
     fontSize: 12,
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     textAlign: 'center',
-    maxWidth: 240,
-    lineHeight: 16,
+    maxWidth: 280,
+    lineHeight: 18,
   },
   topicsList: {
     gap: 2,
   },
-  topicItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    gap: 12,
+  topicItemContainer: {
+    paddingVertical: 10,
   },
   topicItemBorder: {
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
+  topicHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
   topicIconBox: {
     width: 38,
     height: 38,
-    borderRadius: 19,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -240,20 +295,38 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginTop: 2,
   },
+  answerBox: {
+    marginTop: 10,
+    marginLeft: 50,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.primary,
+  },
+  answerText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
   emergencyBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
     backgroundColor: '#ECFDF5',
-    padding: 12,
-    borderRadius: 14,
+    padding: 14,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: '#A7F3D0',
   },
+  emergencyTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
   emergencyText: {
-    flex: 1,
     fontSize: 11,
     color: '#065F46',
-    fontWeight: '600',
+    marginTop: 1,
   },
 });

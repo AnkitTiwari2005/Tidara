@@ -3,33 +3,67 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../constants/colors';
+import { useAppStore } from '../../store/useAppStore';
 
 export default function LocationScreen() {
-  useEffect(() => {
-    detectLocation();
-  }, []);
+  const { setLocation } = useAppStore();
 
-  const detectLocation = async () => {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        setTimeout(() => {
+  useEffect(() => {
+    let mounted = true;
+
+    const detectLocation = async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          const results = await Location.reverseGeocodeAsync({
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+          });
+
+          if (mounted && results.length > 0) {
+            const r = results[0];
+            const parts = [
+              r.name,
+              r.street,
+              r.subregion,
+              r.city,
+              r.region,
+            ].filter(Boolean);
+
+            setLocation({
+              city: r.city ?? r.subregion ?? r.district ?? 'Detected City',
+              address: parts.join(', ') || 'Current Location',
+              lat: loc.coords.latitude,
+              lng: loc.coords.longitude,
+              isServiceable: true,
+            });
+          }
+        }
+      } catch {
+        // Fallback gracefully without throwing
+      } finally {
+        if (mounted) {
           router.replace('/(onboarding)/confirm-location');
-        }, 1200);
-      } else {
-        router.replace('/(onboarding)/confirm-location');
+        }
       }
-    } catch {
-      router.replace('/(onboarding)/confirm-location');
-    }
-  };
+    };
+
+    detectLocation();
+
+    return () => {
+      mounted = false;
+    };
+  }, [setLocation]);
 
   return (
     <SafeAreaView style={styles.safeArea}>

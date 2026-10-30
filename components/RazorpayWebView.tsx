@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, StyleSheet, ActivityIndicator, Modal, TouchableOpacity, Text, SafeAreaView } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, Modal, TouchableOpacity, Text, Alert, Linking } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
@@ -19,38 +20,58 @@ export default function RazorpayWebView({
   onFailure,
   onClose,
 }: RazorpayWebViewProps) {
-  const handleClose = () => {
-    if (onClose) {
-      onClose();
-    } else {
-      onFailure(null, true);
-    }
+  const confirmClose = () => {
+    Alert.alert(
+      'Cancel Payment?',
+      'Your payment is currently being processed. If you have already authorised the amount, please wait a moment.',
+      [
+        { text: 'Wait', style: 'cancel' },
+        {
+          text: 'Cancel Payment',
+          style: 'destructive',
+          onPress: () => {
+            if (onClose) onClose();
+            else onFailure(null, true);
+          },
+        },
+      ]
+    );
   };
 
   const handleMessage = (event: any) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
       if (data.success) {
-        onSuccess({ paymentId: data.paymentId, orderId: data.orderId, signature: data.signature });
+        onSuccess({
+          paymentId: data.paymentId,
+          orderId: data.orderId,
+          signature: data.signature,
+        });
       } else if (data.cancelled) {
         onFailure(null, true);
       } else {
         onFailure(data.error ?? 'Payment failed');
       }
     } catch {
-      onFailure('Unexpected error during checkout');
+      onFailure('Unexpected response from checkout');
     }
   };
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={handleClose}>
+    <Modal visible={visible} animationType="slide" onRequestClose={confirmClose}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
           <View style={styles.headerTitleRow}>
             <Ionicons name="lock-closed" size={16} color="#059669" />
             <Text style={styles.headerTitle}>Razorpay Secure Payment</Text>
           </View>
-          <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
+          <TouchableOpacity
+            onPress={confirmClose}
+            style={styles.closeBtn}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityLabel="Close payment window"
+            accessibilityRole="button"
+          >
             <Ionicons name="close" size={20} color={Colors.textPrimary} />
           </TouchableOpacity>
         </View>
@@ -59,6 +80,29 @@ export default function RazorpayWebView({
           source={{ html }}
           onMessage={handleMessage}
           startInLoadingState
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          originWhitelist={['*']}
+          setSupportMultipleWindows={false}
+          onShouldStartLoadWithRequest={(request) => {
+            // Handle native UPI app intents (gpay://, upi://, phonepe://, paytmmp://)
+            if (
+              request.url.startsWith('upi://') ||
+              request.url.startsWith('gpay://') ||
+              request.url.startsWith('phonepe://') ||
+              request.url.startsWith('paytmmp://')
+            ) {
+              Linking.canOpenURL(request.url).then((can) => {
+                if (can) {
+                  Linking.openURL(request.url);
+                } else {
+                  Alert.alert('App Not Found', 'No compatible UPI app found for this request.');
+                }
+              });
+              return false;
+            }
+            return true;
+          }}
           renderLoading={() => (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color={Colors.primary} />

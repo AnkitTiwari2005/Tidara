@@ -30,7 +30,13 @@ export default function TidaraPassModal({ visible, onClose, onBook }: TidaraPass
           <TouchableWithoutFeedback>
             <View style={styles.container}>
               {/* Close Button */}
-              <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+              <TouchableOpacity
+                style={styles.closeBtn}
+                onPress={onClose}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityLabel="Close Pass details"
+                accessibilityRole="button"
+              >
                 <Ionicons name="close" size={20} color={Colors.textPrimary} />
               </TouchableOpacity>
 
@@ -63,12 +69,12 @@ export default function TidaraPassModal({ visible, onClose, onBook }: TidaraPass
               {/* Offer Details */}
               <View style={styles.offerRow}>
                 <Text style={styles.offerLabel}>3 Visits for only </Text>
-                <Text style={styles.origPrice}>{formatCurrency(750)}</Text>
-                <Text style={styles.dealPrice}> {formatCurrency(177)}</Text>
+                <Text style={styles.origPrice}>{formatCurrency(199)}</Text>
+                <Text style={styles.dealPrice}> {formatCurrency(129)}</Text>
               </View>
 
               <Text style={styles.savingsTag}>
-                ⚡ Save ₹573 instantly • Valid on all cleaning & kitchen prep
+                ⚡ Save ₹70 with VIP member pricing • Valid on all cleaning & kitchen prep
               </Text>
 
               {/* Features List */}
@@ -89,7 +95,7 @@ export default function TidaraPassModal({ visible, onClose, onBook }: TidaraPass
                 onPress={onBook}
                 activeOpacity={0.85}
               >
-                <Text style={styles.bookBtnText}>Claim Pass for {formatCurrency(177)}</Text>
+                <Text style={styles.bookBtnText}>Claim Pass for {formatCurrency(129)}</Text>
                 <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
               </TouchableOpacity>
             </View>

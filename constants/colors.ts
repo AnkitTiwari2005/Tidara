@@ -3,12 +3,12 @@ export const Colors = {
   primary: '#0B5335',           // Deep Luxury Emerald
   primaryDark: '#063D26',       // Obsidian Emerald
   primaryLight: '#0E6A44',      // Forest Green
-  accent: '#10B981',            // Vivid Mint
+  accent: '#059669',            // Rich Mint (WCAG AA compliant)
   accentLight: '#E8FBF4',       // Soft Mint Surface
   accentBorder: '#A7F3D0',      // Mint Border
   
   // Secondary Accents
-  gold: '#F59E0B',              // Rating Star Gold
+  gold: '#D97706',              // Darker Gold for accessible text
   goldLight: '#FEF3C7',
   blue: '#2563EB',
   blueLight: '#EFF6FF',
@@ -23,16 +23,16 @@ export const Colors = {
 
   // Typography
   textPrimary: '#0F172A',       // Obsidian Slate
-  textSecondary: '#475569',     // Medium Slate
-  textMuted: '#94A3B8',         // Subtle Muted Slate
+  textSecondary: '#334155',     // Medium-Dark Slate
+  textMuted: '#64748B',         // High Contrast Slate (4.7:1 AA on white)
   textWhite: '#FFFFFF',
 
   // Status & Utility
-  success: '#10B981',
+  success: '#059669',
   successLight: '#DCFCE7',
-  warning: '#F59E0B',
+  warning: '#D97706',
   warningLight: '#FEF3C7',
-  error: '#EF4444',
+  error: '#DC2626',
   errorLight: '#FEE2E2',
 
   // Brand Buttons
@@ -56,16 +56,25 @@ export const Colors = {
   // Backwards compatibility keys
   lightGreenBg: '#E8FBF4',
   inputBorder: '#E2E8F0',
-  errorRed: '#EF4444',
+  errorRed: '#DC2626',
   border: '#E2E8F0',
   tabBarBg: '#FFFFFF',
   tabBarActive: '#0B5335',
-  tabBarInactive: '#94A3B8',
+  tabBarInactive: '#64748B',
   shadow: 'rgba(15, 23, 42, 0.08)',
 };
 
-export const formatCurrency = (val: number): string => {
-  return `\u20B9${val.toLocaleString('en-IN')}`;
+/**
+ * Format currency with Indian Rupee symbol, handling integers, decimals, and negative numbers.
+ */
+export const formatCurrency = (val: number | null | undefined): string => {
+  const num = typeof val === 'number' && !isNaN(val) ? val : 0;
+  const isNegative = num < 0;
+  const abs = Math.abs(num);
+  const formatted = Number.isInteger(abs)
+    ? abs.toLocaleString('en-IN')
+    : abs.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return isNegative ? `-\u20B9${formatted}` : `\u20B9${formatted}`;
 };
 
 export default Colors;

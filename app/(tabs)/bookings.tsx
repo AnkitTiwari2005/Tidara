@@ -5,17 +5,17 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   ActivityIndicator,
   RefreshControl,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, formatCurrency } from '../../constants/colors';
 import { useAppStore } from '../../store/useAppStore';
-import { getUserBookings, Booking } from '../../lib/supabase';
+import { getUserBookings, cancelBooking, Booking } from '../../lib/supabase';
 
 type TabType = 'upcoming' | 'previous';
 
@@ -32,8 +32,7 @@ export default function BookingsScreen() {
       setLoading(false);
       return;
     }
-    const phone = user.phone.startsWith('+91') ? user.phone : `+91${user.phone}`;
-    const { data } = await getUserBookings(phone);
+    const { data } = await getUserBookings(user.phone);
     setBookings(data ?? []);
     setLoading(false);
     setRefreshing(false);
@@ -41,7 +40,6 @@ export default function BookingsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
       fetchBookings();
     }, [fetchBookings])
   );
@@ -55,11 +53,37 @@ export default function BookingsScreen() {
   const previous = bookings.filter((b) => b.status !== 'upcoming');
   const displayed = activeTab === 'upcoming' ? upcoming : previous;
 
-  const handleTrackPro = (booking: Booking) => {
+  const handleCancelBooking = (booking: Booking) => {
+    if (!booking.id) return;
     Alert.alert(
-      'Live Pro Tracking',
-      `Your service pro is en route for ${booking.service_name}.\nEstimated Arrival: 12 minutes.\nGPS link active.`,
-      [{ text: 'OK' }]
+      'Cancel Booking?',
+      `Are you sure you want to cancel "${booking.service_name}"? Free cancellation is active.`,
+      [
+        { text: 'Keep Booking', style: 'cancel' },
+        {
+          text: 'Cancel Service',
+          style: 'destructive',
+          onPress: async () => {
+            setLoading(true);
+            await cancelBooking(booking.id!);
+            await fetchBookings();
+            Alert.alert('Booking Cancelled', 'Your booking was cancelled. Any prepaid amount will be credited back.');
+          },
+        },
+      ]
+    );
+  };
+
+  const handleBookingDetails = (booking: Booking) => {
+    Alert.alert(
+      booking.service_name,
+      `📅 Slot: ${booking.scheduled_at || 'Today'}\n📍 Address: ${booking.address}\n💳 Amount: ${formatCurrency(booking.price)}\n📋 Status: ${booking.status.toUpperCase()}`,
+      booking.status === 'upcoming'
+        ? [
+            { text: 'Cancel Visit', style: 'destructive', onPress: () => handleCancelBooking(booking) },
+            { text: 'OK' },
+          ]
+        : [{ text: 'OK' }]
     );
   };
 
@@ -71,13 +95,15 @@ export default function BookingsScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>My Bookings</Text>
-          <Text style={styles.headerSubtitle}>Real-time status & visit records</Text>
+          <Text style={styles.headerSubtitle}>Status & visit records</Text>
         </View>
 
         <TouchableOpacity
           style={styles.helpBtn}
           onPress={() => router.push('/help')}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Open support"
         >
           <Ionicons name="help-circle-outline" size={16} color={Colors.primary} />
           <Text style={styles.helpText}>Support</Text>
@@ -90,6 +116,8 @@ export default function BookingsScreen() {
           style={[styles.tabBtn, activeTab === 'upcoming' && styles.tabBtnActive]}
           onPress={() => setActiveTab('upcoming')}
           activeOpacity={0.8}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: activeTab === 'upcoming' }}
         >
           <Ionicons
             name="time-outline"
@@ -107,6 +135,8 @@ export default function BookingsScreen() {
           style={[styles.tabBtn, activeTab === 'previous' && styles.tabBtnActive]}
           onPress={() => setActiveTab('previous')}
           activeOpacity={0.8}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: activeTab === 'previous' }}
         >
           <Ionicons
             name="checkmark-done-outline"
@@ -124,6 +154,24 @@ export default function BookingsScreen() {
       {loading ? (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      ) : !user ? (
+        /* Guest State */
+        <View style={styles.guestContainer}>
+          <View style={styles.emptyIconCircle}>
+            <Ionicons name="person-outline" size={38} color={Colors.primary} />
+          </View>
+          <Text style={styles.emptyTitle}>Sign in to View Bookings</Text>
+          <Text style={styles.emptySubtitle}>
+            Log in with your mobile number to view your active appointments and past service visits.
+          </Text>
+          <TouchableOpacity
+            style={styles.bookNowBtn}
+            onPress={() => router.push('/(auth)/login')}
+          >
+            <Text style={styles.bookNowText}>Sign In / Register</Text>
+            <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+          </TouchableOpacity>
         </View>
       ) : (
         <ScrollView
@@ -157,8 +205,8 @@ export default function BookingsScreen() {
               </Text>
               <Text style={styles.emptySubtitle}>
                 {activeTab === 'upcoming'
-                  ? 'Need immediate house help or a deep clean? Book our top-rated pros in minutes.'
-                  : 'Your completed bookings and tax invoices will appear here.'}
+                  ? 'Need immediate house help or a deep clean? Book verified pros in minutes.'
+                  : 'Your completed bookings and visit history will appear here.'}
               </Text>
 
               {activeTab === 'upcoming' && (
@@ -174,8 +222,13 @@ export default function BookingsScreen() {
             </View>
           ) : (
             /* Booking Cards */
-            displayed.map((booking) => (
-              <View key={booking.id} style={styles.bookingCard}>
+            displayed.map((booking, index) => (
+              <TouchableOpacity
+                key={booking.id || index.toString()}
+                style={styles.bookingCard}
+                onPress={() => handleBookingDetails(booking)}
+                activeOpacity={0.9}
+              >
                 {/* Header Row */}
                 <View style={styles.cardHeader}>
                   <View style={styles.serviceIconCircle}>
@@ -223,7 +276,7 @@ export default function BookingsScreen() {
                 <View style={styles.addressBox}>
                   <Ionicons name="location-outline" size={16} color={Colors.textMuted} />
                   <Text style={styles.addressText} numberOfLines={1}>
-                    {booking.address || 'Saved Home Address'}
+                    {booking.address || 'Confirmed Home Address'}
                   </Text>
                 </View>
 
@@ -232,21 +285,29 @@ export default function BookingsScreen() {
                 {/* Footer Row */}
                 <View style={styles.cardFooter}>
                   <View>
-                    <Text style={styles.priceLabel}>Total Paid</Text>
+                    <Text style={styles.priceLabel}>Amount</Text>
                     <Text style={styles.priceValue}>
                       {formatCurrency(Number(booking.price) || 0)}
                     </Text>
                   </View>
 
                   {booking.status === 'upcoming' ? (
-                    <TouchableOpacity
-                      style={styles.trackBtn}
-                      onPress={() => handleTrackPro(booking)}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons name="navigate" size={14} color="#FFFFFF" />
-                      <Text style={styles.trackBtnText}>Track Pro</Text>
-                    </TouchableOpacity>
+                    <View style={styles.actionRow}>
+                      <TouchableOpacity
+                        style={styles.cancelBtn}
+                        onPress={() => handleCancelBooking(booking)}
+                      >
+                        <Text style={styles.cancelBtnText}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.trackBtn}
+                        onPress={() => handleBookingDetails(booking)}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="information-circle-outline" size={14} color="#FFFFFF" />
+                        <Text style={styles.trackBtnText}>Details</Text>
+                      </TouchableOpacity>
+                    </View>
                   ) : (
                     <TouchableOpacity
                       style={styles.rebookBtn}
@@ -258,7 +319,7 @@ export default function BookingsScreen() {
                     </TouchableOpacity>
                   )}
                 </View>
-              </View>
+              </TouchableOpacity>
             ))
           )}
         </ScrollView>
@@ -351,6 +412,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  guestContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    gap: 12,
+  },
   scrollEmpty: {
     flexGrow: 1,
     alignItems: 'center',
@@ -398,17 +466,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     paddingHorizontal: 20,
     paddingVertical: 12,
-    borderRadius: 25,
+    borderRadius: 14,
     marginTop: 8,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 3,
   },
   bookNowText: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#FFFFFF',
   },
   bookingCard: {
@@ -416,13 +479,8 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#F1F5F9',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-    gap: 12,
+    borderColor: '#E2E8F0',
+    gap: 10,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -430,9 +488,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   serviceIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#ECFDF5',
     alignItems: 'center',
     justifyContent: 'center',
@@ -451,9 +509,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   statusPill: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 10,
+    borderRadius: 8,
   },
   statusUpcoming: {
     backgroundColor: '#ECFDF5',
@@ -476,15 +534,14 @@ const styles = StyleSheet.create({
     color: '#2563EB',
   },
   statusTextCancelled: {
-    color: '#EF4444',
+    color: '#DC2626',
   },
   addressBox: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     backgroundColor: '#F8FAFC',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    padding: 10,
     borderRadius: 10,
   },
   addressText: {
@@ -503,23 +560,41 @@ const styles = StyleSheet.create({
   },
   priceLabel: {
     fontSize: 10,
+    fontWeight: '700',
     color: Colors.textMuted,
-    fontWeight: '600',
     textTransform: 'uppercase',
   },
   priceValue: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: Colors.textPrimary,
+    fontSize: 15,
+    fontWeight: '900',
+    color: Colors.primary,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  cancelBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    backgroundColor: '#FEF2F2',
+  },
+  cancelBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#DC2626',
   },
   trackBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
     backgroundColor: Colors.primary,
     paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
   },
   trackBtnText: {
     fontSize: 12,
@@ -530,12 +605,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#ECFDF5',
     paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: '#ECFDF5',
   },
   rebookBtnText: {
     fontSize: 12,

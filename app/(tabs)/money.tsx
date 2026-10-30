@@ -5,11 +5,11 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   TextInput,
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,11 +17,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, formatCurrency } from '../../constants/colors';
 import { useAppStore } from '../../store/useAppStore';
 import { createRazorpayOrder, getRazorpayCheckoutHTML } from '../../lib/razorpay';
-import { updateUserProfile } from '../../lib/supabase';
+import { updateUserProfile, normalizePhone } from '../../lib/supabase';
 import RazorpayWebView from '../../components/RazorpayWebView';
 
 const PRESET_AMOUNTS = [
-  { amount: 250, bonus: 12.5 },
+  { amount: 250, bonus: 12 },
   { amount: 500, bonus: 25 },
   { amount: 1000, bonus: 50 },
 ];
@@ -34,33 +34,51 @@ export default function MoneyScreen() {
 
   const { user, walletBalance, setWalletBalance } = useAppStore();
 
-  const displayAmount =
-    selectedAmount ?? (customAmount ? parseInt(customAmount) : 0);
-  const bonusAmount =
-    displayAmount >= 250 ? parseFloat((displayAmount * 0.05).toFixed(2)) : 0;
+  const parsedCustom = parseInt(customAmount, 10);
+  const displayAmount = customAmount
+    ? (isNaN(parsedCustom) ? 0 : parsedCustom)
+    : (selectedAmount ?? 0);
+
+  const bonusAmount = displayAmount >= 250 ? Math.round(displayAmount * 0.05) : 0;
   const totalCredit = displayAmount + bonusAmount;
 
   const handleAddMoney = async () => {
-    if (displayAmount < 1) {
-      Alert.alert('Invalid Amount', 'Please enter at least ₹1 to top up.');
+    if (!user) {
+      Alert.alert(
+        'Sign in Required',
+        'Please sign in with your mobile number to add funds to your wallet.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign In', onPress: () => router.push('/(auth)/login') },
+        ]
+      );
       return;
     }
+
+    if (displayAmount < 50) {
+      Alert.alert('Minimum Recharge', 'Please enter at least ₹50 to top up your wallet.');
+      return;
+    }
+
+    if (displayAmount > 10000) {
+      Alert.alert('Recharge Limit', 'Single recharge cannot exceed ₹10,000 for standard customer accounts.');
+      return;
+    }
+
     setLoading(true);
     try {
       const amountPaise = displayAmount * 100;
-      const receipt = `wallet_${Date.now()}`;
+      const receipt = `wal_${Date.now()}`.slice(0, 40);
       const order = await createRazorpayOrder(amountPaise, receipt);
-      const userName = user
-        ? `${user.firstName} ${user.lastName ?? ''}`.trim()
-        : 'Customer';
-      const phone = user?.phone ?? '';
+      const userName = `${user.firstName} ${user.lastName ?? ''}`.trim() || 'Valued Member';
+      const phone = normalizePhone(user.phone);
 
       const html = getRazorpayCheckoutHTML({
         orderId: order.id,
         amount: order.amount,
         name: userName,
-        phone: phone.startsWith('+') ? phone : `+91${phone}`,
-        description: `Top up ₹${displayAmount} to Tidara Wallet`,
+        phone,
+        description: `Top up ${formatCurrency(displayAmount)} to Tidara Wallet`,
       });
       setRazorpayHtml(html);
     } catch (err: any) {
@@ -79,10 +97,7 @@ export default function MoneyScreen() {
     setWalletBalance(newBalance);
 
     if (user?.phone) {
-      const phone = user.phone.startsWith('+91')
-        ? user.phone
-        : `+91${user.phone}`;
-      await updateUserProfile(phone, { wallet_balance: newBalance });
+      await updateUserProfile(user.phone, { wallet_balance: newBalance });
     }
 
     Alert.alert(
@@ -90,32 +105,35 @@ export default function MoneyScreen() {
       `${formatCurrency(totalCredit)} has been credited to your wallet${
         bonusAmount > 0 ? ` (includes ${formatCurrency(bonusAmount)} bonus cashback)` : ''
       }.\n\nUpdated Balance: ${formatCurrency(newBalance)}`,
-      [{ text: 'Awesome!' }]
+      [{ text: 'Great!' }]
     );
   };
 
   const onPaymentFailure = (error: string | null, cancelled?: boolean) => {
     setRazorpayHtml(null);
     if (!cancelled) {
-      Alert.alert('Payment Cancelled', error ?? 'Transaction was not completed.');
+      Alert.alert('Payment Notice', error ?? 'Transaction was not completed.');
     }
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Tidara Money</Text>
+        <View>
+          <Text style={styles.headerTitle}>Tidara Money</Text>
+          <Text style={styles.headerSubtitle}>Instant 1-click checkout</Text>
+        </View>
         <TouchableOpacity
           style={styles.helpBtn}
           onPress={() => router.push('/help')}
+          accessibilityRole="button"
+          accessibilityLabel="Open help"
         >
-          <Ionicons name="help-circle-outline" size={22} color="#FFFFFF" />
+          <Ionicons name="help-circle-outline" size={20} color={Colors.primary} />
+          <Text style={styles.helpBtnText}>Help</Text>
         </TouchableOpacity>
       </View>
 
@@ -123,6 +141,7 @@ export default function MoneyScreen() {
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
       >
         {/* Luxury Obsidian-Emerald Card */}
         <LinearGradient
@@ -152,7 +171,7 @@ export default function MoneyScreen() {
           <View style={styles.luxuryCardBottom}>
             <View style={styles.instantRefundPill}>
               <Ionicons name="flash" size={12} color="#A7F3D0" />
-              <Text style={styles.instantRefundText}>1-Click Zero OTP Booking</Text>
+              <Text style={styles.instantRefundText}>1-Click Zero OTP Checkout</Text>
             </View>
             <Text style={styles.expiryText}>NO EXPIRY</Text>
           </View>
@@ -195,18 +214,25 @@ export default function MoneyScreen() {
                     setCustomAmount('');
                   }}
                   activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Select ₹${preset.amount}`}
                 >
                   <Text
                     style={[
-                      styles.presetAmountText,
-                      isSelected && styles.presetAmountTextSelected,
+                      styles.presetAmount,
+                      isSelected && styles.presetAmountSelected,
                     ]}
                   >
-                    {formatCurrency(preset.amount)}
+                    + {formatCurrency(preset.amount)}
                   </Text>
-                  <View style={styles.bonusTag}>
-                    <Text style={styles.bonusTagText}>+{formatCurrency(preset.bonus)}</Text>
-                  </View>
+                  <Text
+                    style={[
+                      styles.presetBonus,
+                      isSelected && styles.presetBonusSelected,
+                    ]}
+                  >
+                    +{formatCurrency(preset.bonus)} free
+                  </Text>
                 </TouchableOpacity>
               );
             })}
@@ -214,99 +240,84 @@ export default function MoneyScreen() {
 
           {/* Custom Amount Input */}
           <View style={styles.inputContainer}>
-            <Text style={styles.currencyPrefix}>₹</Text>
+            <Text style={styles.rupeePrefix}>₹</Text>
             <TextInput
               style={styles.amountInput}
-              placeholder="Or enter custom amount"
+              placeholder="Enter other amount (min ₹50)"
               placeholderTextColor={Colors.textMuted}
               keyboardType="number-pad"
               value={customAmount}
-              onChangeText={(val) => {
-                setCustomAmount(val.replace(/[^0-9]/g, ''));
+              onChangeText={(text) => {
+                const numeric = text.replace(/[^0-9]/g, '');
+                setCustomAmount(numeric);
                 setSelectedAmount(null);
               }}
+              maxLength={5}
             />
           </View>
 
-          {/* Credit Calculation Summary */}
+          {/* Summary */}
           {displayAmount > 0 && (
-            <View style={styles.summaryBox}>
-              <Text style={styles.summaryText}>
-                You will get:{' '}
-                <Text style={styles.summaryAmount}>{formatCurrency(totalCredit)}</Text>
-                {bonusAmount > 0 && (
-                  <Text style={styles.bonusHighlight}>
-                    {' '}
-                    (includes {formatCurrency(bonusAmount)} bonus)
-                  </Text>
-                )}
-              </Text>
+            <View style={styles.calcSummary}>
+              <View style={styles.calcRow}>
+                <Text style={styles.calcLabel}>Recharge Amount</Text>
+                <Text style={styles.calcValue}>{formatCurrency(displayAmount)}</Text>
+              </View>
+              {bonusAmount > 0 && (
+                <View style={styles.calcRow}>
+                  <Text style={styles.bonusLabel}>5% Instant Bonus</Text>
+                  <Text style={styles.bonusValue}>+{formatCurrency(bonusAmount)}</Text>
+                </View>
+              )}
+              <View style={styles.calcDivider} />
+              <View style={styles.calcRowTotal}>
+                <Text style={styles.totalCreditLabel}>Total Added to Wallet</Text>
+                <Text style={styles.totalCreditValue}>{formatCurrency(totalCredit)}</Text>
+              </View>
             </View>
           )}
 
-          {/* Top up Button */}
+          {/* Recharge Button */}
           <TouchableOpacity
-            style={[styles.topupBtn, displayAmount > 0 && styles.topupBtnActive]}
+            style={[styles.addBtn, loading && styles.addBtnDisabled]}
             onPress={handleAddMoney}
-            disabled={displayAmount < 1 || loading}
+            disabled={loading}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={`Recharge wallet with ${formatCurrency(displayAmount)}`}
           >
             {loading ? (
               <ActivityIndicator color="#FFFFFF" size="small" />
             ) : (
-              <View style={styles.topupBtnContent}>
-                <Ionicons name="card-outline" size={18} color="#FFFFFF" />
-                <Text style={styles.topupBtnText}>
-                  Add {formatCurrency(displayAmount || 0)} to Wallet
+              <View style={styles.btnContent}>
+                <Ionicons name="card" size={16} color="#FFFFFF" />
+                <Text style={styles.addBtnText}>
+                  {displayAmount > 0 ? `Recharge ${formatCurrency(displayAmount)}` : 'Select Amount'}
                 </Text>
               </View>
             )}
           </TouchableOpacity>
         </View>
 
-        {/* Why Use Wallet */}
-        <View style={styles.featuresSection}>
-          <Text style={styles.featuresTitle}>Why Use Tidara Money?</Text>
-
-          <View style={styles.featureRow}>
-            <View style={[styles.featureIconBox, { backgroundColor: '#ECFDF5' }]}>
-              <Ionicons name="flash-outline" size={20} color="#059669" />
-            </View>
-            <View style={styles.featureInfo}>
-              <Text style={styles.featureHeading}>Zero-Payment Hassle</Text>
-              <Text style={styles.featureDesc}>
-                No waiting for OTPs or failed UPI transactions at your door.
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.featureRow}>
-            <View style={[styles.featureIconBox, { backgroundColor: '#EFF6FF' }]}>
-              <Ionicons name="refresh-outline" size={20} color="#2563EB" />
-            </View>
-            <View style={styles.featureInfo}>
-              <Text style={styles.featureHeading}>Instant Automatic Refunds</Text>
-              <Text style={styles.featureDesc}>
-                Cancellations or slot adjustments reflect immediately.
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.featureRow}>
-            <View style={[styles.featureIconBox, { backgroundColor: '#FEF3C7' }]}>
-              <Ionicons name="shield-checkmark-outline" size={20} color="#D97706" />
-            </View>
-            <View style={styles.featureInfo}>
-              <Text style={styles.featureHeading}>100% Safe & RBI Compliant</Text>
-              <Text style={styles.featureDesc}>
-                Encrypted via Razorpay banking infrastructure.
-              </Text>
-            </View>
+        {/* Benefits List */}
+        <View style={styles.benefitsCard}>
+          <Text style={styles.sectionTitle}>Why Use Tidara Money?</Text>
+          <View style={styles.benefitsList}>
+            {[
+              { icon: 'flash', text: '1-click zero OTP checkout on all visits' },
+              { icon: 'refresh', text: 'Instant refunds on any cancelled visits' },
+              { icon: 'gift', text: '5% bonus cashback on every ₹250+ recharge' },
+            ].map((b, idx) => (
+              <View key={idx} style={styles.benefitRow}>
+                <Ionicons name={b.icon as any} size={16} color={Colors.primary} />
+                <Text style={styles.benefitText}>{b.text}</Text>
+              </View>
+            ))}
           </View>
         </View>
       </ScrollView>
 
-      {/* Razorpay Checkout Modal */}
+      {/* Razorpay WebView */}
       {razorpayHtml && (
         <RazorpayWebView
           html={razorpayHtml}
@@ -322,27 +333,44 @@ export default function MoneyScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#063D26',
+    backgroundColor: '#FFFFFF',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: '#063D26',
-  },
-  backBtn: {
-    padding: 6,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: -0.3,
+    color: Colors.textPrimary,
+    letterSpacing: -0.5,
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
   },
   helpBtn: {
-    padding: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  helpBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.primary,
   },
   scrollView: {
     flex: 1,
@@ -438,11 +466,6 @@ const styles = StyleSheet.create({
   cashbackBanner: {
     borderRadius: 16,
     overflow: 'hidden',
-    shadowColor: '#B45309',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
   },
   cashbackGradient: {
     flexDirection: 'row',
@@ -454,21 +477,19 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: '#FEF9C3',
+    backgroundColor: '#FEF3C7',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cashbackTextContainer: {
-    flex: 1,
-  },
+  cashbackTextContainer: { flex: 1 },
   cashbackTitle: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#78350F',
+    color: '#92400E',
   },
   cashbackSubtitle: {
     fontSize: 11,
-    color: '#92400E',
+    color: '#B45309',
     marginTop: 1,
   },
   addMoneyCard: {
@@ -477,163 +498,162 @@ const styles = StyleSheet.create({
     padding: 18,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
+    gap: 14,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
     color: Colors.textPrimary,
-    marginBottom: 14,
   },
   presetsRow: {
     flexDirection: 'row',
     gap: 10,
-    marginBottom: 14,
   },
   presetBtn: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 14,
-    paddingVertical: 12,
     alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: '#F8FAFC',
     borderWidth: 1.5,
     borderColor: '#E2E8F0',
-    gap: 4,
+    gap: 2,
   },
   presetBtnSelected: {
     backgroundColor: '#ECFDF5',
     borderColor: Colors.primary,
   },
-  presetAmountText: {
-    fontSize: 15,
+  presetAmount: {
+    fontSize: 13,
     fontWeight: '800',
     color: Colors.textPrimary,
   },
-  presetAmountTextSelected: {
+  presetAmountSelected: {
     color: Colors.primary,
   },
-  bonusTag: {
-    backgroundColor: '#DCFCE7',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
+  presetBonus: {
+    fontSize: 10,
+    color: '#059669',
+    fontWeight: '700',
   },
-  bonusTagText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#15803D',
+  presetBonusSelected: {
+    color: '#059669',
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
     borderWidth: 1.5,
     borderColor: '#E2E8F0',
-    borderRadius: 14,
     paddingHorizontal: 14,
-    paddingVertical: 4,
-    backgroundColor: '#F8FAFC',
+    paddingVertical: 10,
+    gap: 8,
   },
-  currencyPrefix: {
+  rupeePrefix: {
     fontSize: 18,
     fontWeight: '800',
     color: Colors.textPrimary,
-    marginRight: 6,
   },
   amountInput: {
     flex: 1,
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 15,
     color: Colors.textPrimary,
-    paddingVertical: 10,
+    fontWeight: '600',
   },
-  summaryBox: {
-    marginTop: 12,
-    padding: 10,
-    backgroundColor: '#F0FDF4',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#DCFCE7',
+  calcSummary: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 12,
+    gap: 6,
   },
-  summaryText: {
+  calcRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  calcLabel: {
     fontSize: 12,
     color: Colors.textSecondary,
-    textAlign: 'center',
   },
-  summaryAmount: {
+  calcValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  bonusLabel: {
+    fontSize: 12,
+    color: '#059669',
+    fontWeight: '700',
+  },
+  bonusValue: {
+    fontSize: 12,
     fontWeight: '800',
+    color: '#059669',
+  },
+  calcDivider: {
+    height: 1,
+    backgroundColor: '#E2E8F0',
+    marginVertical: 2,
+  },
+  calcRowTotal: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingTop: 2,
+  },
+  totalCreditLabel: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+  totalCreditValue: {
+    fontSize: 14,
+    fontWeight: '900',
     color: Colors.primary,
   },
-  bonusHighlight: {
-    fontWeight: '700',
-    color: '#15803D',
-  },
-  topupBtn: {
-    backgroundColor: '#CBD5E1',
+  addBtn: {
+    backgroundColor: Colors.primary,
     borderRadius: 16,
     paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 16,
-  },
-  topupBtnActive: {
-    backgroundColor: Colors.primary,
     shadowColor: Colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 8,
     elevation: 4,
   },
-  topupBtnContent: {
+  addBtnDisabled: {
+    opacity: 0.6,
+  },
+  btnContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  topupBtnText: {
+  addBtnText: {
     fontSize: 15,
     fontWeight: '800',
     color: '#FFFFFF',
   },
-  featuresSection: {
+  benefitsCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 18,
+    borderRadius: 18,
+    padding: 16,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    gap: 16,
+    gap: 12,
   },
-  featuresTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: Colors.textPrimary,
+  benefitsList: {
+    gap: 10,
   },
-  featureRow: {
+  benefitRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 10,
   },
-  featureIconBox: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  featureInfo: {
-    flex: 1,
-  },
-  featureHeading: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-  },
-  featureDesc: {
-    fontSize: 11,
+  benefitText: {
+    fontSize: 12,
     color: Colors.textSecondary,
-    marginTop: 2,
-    lineHeight: 16,
+    fontWeight: '600',
   },
 });

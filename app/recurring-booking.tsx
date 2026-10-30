@@ -5,13 +5,14 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
+import { useAppStore } from '../store/useAppStore';
 
 const TIME_SLOTS = [
   '7:00 AM', '8:00 AM', '9:00 AM', '10:00 AM',
@@ -31,8 +32,10 @@ const DAYS = [
 ];
 
 export default function RecurringBookingScreen() {
-  const [selectedSlot, setSelectedSlot] = useState<string | null>('9:00 AM');
-  const [selectedDays, setSelectedDays] = useState<string[]>(['Mon', 'Wed', 'Fri']);
+  const { scheduledDays: initialDays, scheduledSlot: initialSlot, setRecurringSchedule } = useAppStore();
+
+  const [selectedSlot, setSelectedSlot] = useState<string>(initialSlot || '9:00 AM');
+  const [selectedDays, setSelectedDays] = useState<string[]>(initialDays.length > 0 ? initialDays : ['Mon', 'Wed', 'Fri']);
 
   const toggleDay = (day: string) => {
     setSelectedDays((prev) =>
@@ -45,10 +48,19 @@ export default function RecurringBookingScreen() {
       Alert.alert('Incomplete Schedule', 'Please pick at least one day and a preferred time slot.');
       return;
     }
+
+    // Persist recurring schedule in store
+    setRecurringSchedule(selectedDays, selectedSlot);
+
     Alert.alert(
       'Recurring Schedule Set! 🎉',
-      `Your pro will arrive every ${selectedDays.join(', ')} at ${selectedSlot}. You can cancel or pause anytime.`,
-      [{ text: 'Continue to Cart', onPress: () => router.push('/cart') }]
+      `Your pro will arrive every ${selectedDays.join(', ')} at ${selectedSlot}. You can modify or pause anytime.`,
+      [
+        {
+          text: 'Continue to Cart',
+          onPress: () => router.push('/cart'),
+        },
+      ]
     );
   };
 
@@ -58,7 +70,12 @@ export default function RecurringBookingScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          accessibilityLabel="Go back"
+          accessibilityRole="button"
+        >
           <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Recurring Schedule</Text>
@@ -76,7 +93,7 @@ export default function RecurringBookingScreen() {
           <View style={styles.infoTextContainer}>
             <Text style={styles.infoTitle}>Dedicated Pro for Your Home</Text>
             <Text style={styles.infoSub}>
-              Same trained helper arrives on your selected days. Zero re-booking effort.
+              Trained helper arrives on your selected days. Zero re-booking effort.
             </Text>
           </View>
         </View>
@@ -97,6 +114,9 @@ export default function RecurringBookingScreen() {
                   style={[styles.dayPill, active && styles.dayPillActive]}
                   onPress={() => toggleDay(day.short)}
                   activeOpacity={0.8}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: active }}
+                  accessibilityLabel={day.full}
                 >
                   <Text style={[styles.dayPillText, active && styles.dayPillTextActive]}>
                     {day.short}
@@ -127,6 +147,9 @@ export default function RecurringBookingScreen() {
                   style={[styles.slotBtn, active && styles.slotBtnActive]}
                   onPress={() => setSelectedSlot(slot)}
                   activeOpacity={0.8}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={`Time slot ${slot}`}
                 >
                   <Text style={[styles.slotBtnText, active && styles.slotBtnTextActive]}>
                     {slot}
@@ -144,6 +167,8 @@ export default function RecurringBookingScreen() {
           style={styles.confirmBtn}
           onPress={handleConfirm}
           activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Save recurring slot and continue"
         >
           <Text style={styles.confirmBtnText}>Save Recurring Slot</Text>
           <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />

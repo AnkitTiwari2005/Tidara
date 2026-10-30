@@ -44,32 +44,53 @@ export async function createRazorpayOrder(
   amountInPaise: number,
   receipt: string
 ): Promise<RazorpayOrderResponse> {
-  const credentials = encodeBase64(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`);
+  const sanitizedAmount = Math.max(100, Math.round(amountInPaise));
+  const sanitizedReceipt = receipt.slice(0, 40); // Razorpay max receipt length is 40 chars
 
-  const response = await fetch('https://api.razorpay.com/v1/orders', {
-    method: 'POST',
-    headers: {
-      Authorization: `Basic ${credentials}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      amount: amountInPaise,
-      currency: 'INR',
-      receipt,
-      payment_capture: 1,
-    }),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-  if (!response.ok) {
-    const err = await response.json();
-    throw new Error(err.error?.description ?? 'Failed to initialize payment gateway order');
+  try {
+    const credentials = encodeBase64(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`);
+
+    const response = await fetch('https://api.razorpay.com/v1/orders', {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${credentials}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        amount: sanitizedAmount,
+        currency: 'INR',
+        receipt: sanitizedReceipt,
+        payment_capture: 1,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      let errorMsg = 'Failed to initialize payment gateway order';
+      try {
+        const err = await response.json();
+        if (err.error?.description) errorMsg = err.error.description;
+      } catch {}
+      throw new Error(errorMsg);
+    }
+
+    return await response.json();
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error('Payment gateway timed out. Please check your connection and retry.');
+    }
+    throw err;
   }
-
-  return response.json();
 }
 
 /**
- * Generates the HTML page that opens Razorpay Checkout inside a WebView.
+ * Generates the HTML page that opens Razorpay Checkout inside a WebView safely.
  */
 export function getRazorpayCheckoutHTML(params: {
   orderId: string;
@@ -78,6 +99,22 @@ export function getRazorpayCheckoutHTML(params: {
   phone: string;
   description: string;
 }): string {
+  const optionsObj = {
+    key: RAZORPAY_KEY_ID,
+    amount: Math.round(params.amount),
+    currency: 'INR',
+    name: 'Tidara Home Services',
+    description: params.description || 'Verified Home Services',
+    order_id: params.orderId,
+    prefill: {
+      name: params.name || 'Valued Customer',
+      contact: params.phone || '',
+    },
+    theme: { color: '#0B5335' },
+  };
+
+  const safeOptionsJSON = JSON.stringify(optionsObj).replace(/<\/script/gi, '<\\/script');
+
   return `
 <!DOCTYPE html>
 <html>
@@ -90,13 +127,14 @@ export function getRazorpayCheckoutHTML(params: {
       display: flex;
       flex-direction: column;
       align-items: center;
-      justifyContent: center;
+      justify-content: center;
       height: 100vh;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     .loader {
       text-align: center;
       color: #064E3B;
+      padding: 24px;
     }
     .spinner {
       border: 3px solid #E2E8F0;
@@ -109,7 +147,7 @@ export function getRazorpayCheckoutHTML(params: {
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     .label {
-      font-size: 14px;
+      font-size: 15px;
       font-weight: 700;
       color: #0F172A;
       letter-spacing: -0.2px;
@@ -117,7 +155,7 @@ export function getRazorpayCheckoutHTML(params: {
     .sub {
       font-size: 12px;
       color: #64748B;
-      margin-top: 4px;
+      margin-top: 6px;
     }
   </style>
 </head>
@@ -127,42 +165,61 @@ export function getRazorpayCheckoutHTML(params: {
     <div class="label">Opening Secure Payment</div>
     <div class="sub">Connecting to 256-bit encrypted gateway...</div>
   </div>
-  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <script src="https://checkout.razorpay.com/v1/checkout.js" onerror="handleScriptError()"></script>
   <script>
-    var options = {
-      key: '${RAZORPAY_KEY_ID}',
-      amount: '${params.amount}',
-      currency: 'INR',
-      name: 'Tidara Home Services',
-      description: '${params.description}',
-      order_id: '${params.orderId}',
-      prefill: {
-        name: '${params.name}',
-        contact: '${params.phone}',
-      },
-      theme: { color: '#0B5335' },
-      handler: function(response) {
+    function handleScriptError() {
+      if (window.ReactNativeWebView) {
         window.ReactNativeWebView.postMessage(JSON.stringify({
-          success: true,
-          paymentId: response.razorpay_payment_id,
-          orderId: response.razorpay_order_id,
-          signature: response.razorpay_signature,
+          success: false,
+          error: 'Failed to load Razorpay payment script. Please check your internet connection.'
         }));
-      },
-      modal: {
-        ondismiss: function() {
-          window.ReactNativeWebView.postMessage(JSON.stringify({ success: false, cancelled: true }));
-        }
       }
-    };
-    var rzp = new Razorpay(options);
-    rzp.open();
-    rzp.on('payment.failed', function(response) {
-      window.ReactNativeWebView.postMessage(JSON.stringify({
-        success: false,
-        error: response.error.description,
-      }));
-    });
+    }
+
+    try {
+      var baseOptions = ${safeOptionsJSON};
+      baseOptions.handler = function(response) {
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            success: true,
+            paymentId: response.razorpay_payment_id,
+            orderId: response.razorpay_order_id,
+            signature: response.razorpay_signature,
+          }));
+        }
+      };
+      baseOptions.modal = {
+        ondismiss: function() {
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              success: false,
+              cancelled: true
+            }));
+          }
+        }
+      };
+
+      var rzp = new Razorpay(baseOptions);
+
+      // Register failed listener before open
+      rzp.on('payment.failed', function(response) {
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            success: false,
+            error: response.error ? response.error.description : 'Payment failed'
+          }));
+        }
+      });
+
+      rzp.open();
+    } catch(e) {
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          success: false,
+          error: 'Initialization error: ' + (e.message || 'Unknown error')
+        }));
+      }
+    }
   </script>
 </body>
 </html>

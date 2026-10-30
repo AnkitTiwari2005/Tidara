@@ -5,19 +5,20 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  SafeAreaView,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '../../constants/colors';
 import { useAppStore } from '../../store/useAppStore';
+import { normalizePhone } from '../../lib/supabase';
 
 export default function ProfileSetupScreen() {
   const [firstName, setFirstName] = useState('');
@@ -30,21 +31,31 @@ export default function ProfileSetupScreen() {
 
   const handleConfirm = async () => {
     if (!canProceed) return;
+
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      Alert.alert('Invalid Email', 'Please enter a valid email address or leave it blank.');
+      return;
+    }
+
     setLoading(true);
     try {
       const updatedUser = {
         id: user?.id ?? Date.now().toString(),
-        phone: user?.phone ?? '',
+        phone: normalizePhone(user?.phone ?? ''),
         firstName: firstName.trim(),
         lastName: lastName.trim() || undefined,
         email: email.trim() || undefined,
       };
+
+      await saveUserToDB(updatedUser);
       setUser(updatedUser);
       setAuthenticated(true);
-      await saveUserToDB(updatedUser);
       router.replace('/(onboarding)/location');
-    } catch (e) {
-      Alert.alert('Error', 'Could not save profile details. Please try again.');
+    } catch {
+      Alert.alert(
+        'Save Failed',
+        'Could not save your profile to the cloud right now. Check your internet connection and try again.'
+      );
     } finally {
       setLoading(false);
     }
@@ -97,6 +108,7 @@ export default function ProfileSetupScreen() {
                   placeholderTextColor={Colors.textMuted}
                   value={firstName}
                   onChangeText={setFirstName}
+                  autoCapitalize="words"
                   autoFocus
                   returnKeyType="next"
                 />
@@ -116,6 +128,7 @@ export default function ProfileSetupScreen() {
                   placeholderTextColor={Colors.textMuted}
                   value={lastName}
                   onChangeText={setLastName}
+                  autoCapitalize="words"
                   returnKeyType="next"
                 />
               </View>
@@ -150,6 +163,8 @@ export default function ProfileSetupScreen() {
             onPress={handleConfirm}
             disabled={!canProceed || loading}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Complete Setup"
           >
             {loading ? (
               <ActivityIndicator color="#FFFFFF" />

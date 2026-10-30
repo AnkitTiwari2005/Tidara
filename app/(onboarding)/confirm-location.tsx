@@ -4,12 +4,12 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   TextInput,
   ActivityIndicator,
   ScrollView,
   Dimensions,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as Location from 'expo-location';
 import { router } from 'expo-router';
@@ -19,17 +19,24 @@ import { useAppStore } from '../../store/useAppStore';
 
 const { width } = Dimensions.get('window');
 
-const SERVICEABLE_CITIES = [
-  { name: 'Gurugram', area: 'Haryana' },
-  { name: 'Delhi', area: 'NCR' },
-  { name: 'Noida', area: 'UP' },
-  { name: 'Faridabad', area: 'Haryana' },
-  { name: 'Mumbai', area: 'Maharashtra' },
-  { name: 'Pune', area: 'Maharashtra' },
-  { name: 'Bangalore', area: 'Karnataka' },
-  { name: 'Hyderabad', area: 'Telangana' },
-  { name: 'Chennai', area: 'Tamil Nadu' },
-  { name: 'Kolkata', area: 'West Bengal' },
+interface ServiceableCity {
+  name: string;
+  area: string;
+  lat: number;
+  lng: number;
+}
+
+const SERVICEABLE_CITIES: ServiceableCity[] = [
+  { name: 'Gurugram', area: 'Haryana', lat: 28.4595, lng: 77.0266 },
+  { name: 'Delhi', area: 'NCR', lat: 28.6139, lng: 77.2090 },
+  { name: 'Noida', area: 'UP', lat: 28.5355, lng: 77.3910 },
+  { name: 'Faridabad', area: 'Haryana', lat: 28.4089, lng: 77.3178 },
+  { name: 'Mumbai', area: 'Maharashtra', lat: 19.0760, lng: 72.8777 },
+  { name: 'Pune', area: 'Maharashtra', lat: 18.5204, lng: 73.8567 },
+  { name: 'Bangalore', area: 'Karnataka', lat: 12.9716, lng: 77.5946 },
+  { name: 'Hyderabad', area: 'Telangana', lat: 17.3850, lng: 78.4867 },
+  { name: 'Chennai', area: 'Tamil Nadu', lat: 13.0827, lng: 80.2707 },
+  { name: 'Kolkata', area: 'West Bengal', lat: 22.5726, lng: 88.3639 },
 ];
 
 const POPULAR_CITIES = ['Gurugram', 'Delhi', 'Mumbai', 'Bangalore', 'Noida'];
@@ -156,14 +163,21 @@ const mapStyles = StyleSheet.create({
 });
 
 export default function ConfirmLocationScreen() {
-  const [address, setAddress] = useState('');
-  const [cityName, setCityName] = useState('');
+  const { location: storedLocation, setLocation } = useAppStore();
+
+  const [address, setAddress] = useState(storedLocation?.address || '');
+  const [cityName, setCityName] = useState(storedLocation?.city || '');
+  const [coords, setCoords] = useState<{ lat: number; lng: number }>({
+    lat: storedLocation?.lat || 28.4595,
+    lng: storedLocation?.lng || 77.0266,
+  });
   const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
-  const { setLocation } = useAppStore();
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    detectLocation();
+    if (!storedLocation?.address) {
+      detectLocation();
+    }
   }, []);
 
   const detectLocation = async () => {
@@ -174,38 +188,49 @@ export default function ConfirmLocationScreen() {
         const loc = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
+        const detectedLat = loc.coords.latitude;
+        const detectedLng = loc.coords.longitude;
+        setCoords({ lat: detectedLat, lng: detectedLng });
+
         const results = await Location.reverseGeocodeAsync({
-          latitude: loc.coords.latitude,
-          longitude: loc.coords.longitude,
+          latitude: detectedLat,
+          longitude: detectedLng,
         });
         if (results.length > 0) {
           const r = results[0];
           const parts = [
+            r.name,
             r.street,
             r.district,
             r.subregion,
             r.city,
             r.region,
-            r.country,
           ].filter(Boolean);
           setAddress(parts.join(', '));
-          setCityName(r.city ?? r.subregion ?? r.district ?? 'Gurugram');
+          setCityName(r.city ?? r.subregion ?? r.district ?? 'Current Location');
         }
       } else {
-        setCityName('Gurugram');
-        setAddress('Sector 48, Sohna Road, Gurugram, Haryana');
+        if (!cityName) {
+          setCityName('Gurugram');
+          setAddress('Sector 48, Sohna Road, Gurugram, Haryana');
+          setCoords({ lat: 28.4595, lng: 77.0266 });
+        }
       }
     } catch {
-      setCityName('Gurugram');
-      setAddress('Sector 48, Sohna Road, Gurugram, Haryana');
+      if (!cityName) {
+        setCityName('Gurugram');
+        setAddress('Sector 48, Sohna Road, Gurugram, Haryana');
+        setCoords({ lat: 28.4595, lng: 77.0266 });
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSelectCity = (city: { name: string; area: string }) => {
+  const handleSelectCity = (city: ServiceableCity) => {
     setCityName(city.name);
     setAddress(`${city.name}, ${city.area}, India`);
+    setCoords({ lat: city.lat, lng: city.lng });
     setSearch('');
   };
 
@@ -215,19 +240,19 @@ export default function ConfirmLocationScreen() {
     setLocation({
       city: finalCity,
       address: finalAddress,
-      lat: 28.4595,
-      lng: 77.0266,
+      lat: coords.lat,
+      lng: coords.lng,
       isServiceable: true,
     });
     router.replace('/(tabs)');
   };
 
   const filteredCities =
-    search.length > 0
+    search.trim().length > 0
       ? SERVICEABLE_CITIES.filter(
           (c) =>
-            c.name.toLowerCase().includes(search.toLowerCase()) ||
-            c.area.toLowerCase().includes(search.toLowerCase())
+            c.name.toLowerCase().includes(search.trim().toLowerCase()) ||
+            c.area.toLowerCase().includes(search.trim().toLowerCase())
         )
       : [];
 
@@ -237,7 +262,18 @@ export default function ConfirmLocationScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(tabs)');
+            }
+          }}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Go Back"
+        >
           <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Confirm Location</Text>
@@ -292,7 +328,12 @@ export default function ConfirmLocationScreen() {
         )}
 
         {/* GPS Button */}
-        <TouchableOpacity style={styles.gpsBtn} onPress={detectLocation}>
+        <TouchableOpacity
+          style={styles.gpsBtn}
+          onPress={detectLocation}
+          accessibilityRole="button"
+          accessibilityLabel="Use GPS Location"
+        >
           <Ionicons name="locate" size={16} color={Colors.primary} />
           <Text style={styles.gpsText}>Use Precise GPS</Text>
         </TouchableOpacity>
@@ -349,6 +390,8 @@ export default function ConfirmLocationScreen() {
           style={styles.confirmBtn}
           onPress={handleConfirm}
           activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Confirm Location and Continue"
         >
           <Text style={styles.confirmBtnText}>Confirm Location & Continue</Text>
           <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />

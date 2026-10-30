@@ -5,13 +5,12 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   TextInput,
   Image,
   Dimensions,
   Animated,
-  Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -36,13 +35,14 @@ function ServiceCard({ service }: { service: Service }) {
   const { addToCart, removeFromCart, cartItems } = useAppStore();
   const cartItem = cartItems.find((i) => i.serviceId === service.id);
   const qty = cartItem?.quantity ?? 0;
-  const [imageLoaded, setImageLoaded] = useState(false);
 
   return (
     <TouchableOpacity
       style={styles.serviceCard}
       onPress={() => router.push(`/service/${service.id}` as any)}
       activeOpacity={0.88}
+      accessibilityRole="button"
+      accessibilityLabel={`${service.name}, price ${formatCurrency(service.price)}`}
     >
       {/* Photo Container */}
       <View style={styles.imageContainer}>
@@ -50,7 +50,6 @@ function ServiceCard({ service }: { service: Service }) {
           source={{ uri: service.imageUrl }}
           style={styles.servicePhoto}
           resizeMode="cover"
-          onLoad={() => setImageLoaded(true)}
         />
 
         {/* Fallback & Tint Overlay */}
@@ -109,6 +108,8 @@ function ServiceCard({ service }: { service: Service }) {
                 }}
                 style={styles.stepperBtn}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="Decrease quantity"
               >
                 <Ionicons name="remove" size={14} color="#FFFFFF" />
               </TouchableOpacity>
@@ -116,10 +117,12 @@ function ServiceCard({ service }: { service: Service }) {
               <TouchableOpacity
                 onPress={(e) => {
                   e.stopPropagation?.();
-                  addToCart(service.id);
+                  addToCart(service.id, undefined, service.price);
                 }}
                 style={styles.stepperBtn}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="Increase quantity"
               >
                 <Ionicons name="add" size={14} color="#FFFFFF" />
               </TouchableOpacity>
@@ -129,9 +132,11 @@ function ServiceCard({ service }: { service: Service }) {
               style={styles.addBtn}
               onPress={(e) => {
                 e.stopPropagation?.();
-                addToCart(service.id);
+                addToCart(service.id, undefined, service.price);
               }}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={`Add ${service.name} to cart`}
             >
               <Ionicons name="add" size={14} color={Colors.primary} />
               <Text style={styles.addBtnText}>ADD</Text>
@@ -146,8 +151,8 @@ function ServiceCard({ service }: { service: Service }) {
 // Festive Pack Card Component with Photo
 function FestivePackCard({ pack }: { pack: FestivePack }) {
   const { addToCart, removeFromCart, cartItems } = useAppStore();
-  const cartItemId = `pack_${pack.id}`;
-  const cartItem = cartItems.find((i) => i.serviceId === cartItemId);
+  const cartItemId = pack.id;
+  const cartItem = cartItems.find((i) => i.serviceId === cartItemId || i.serviceId === `pack_${cartItemId}`);
   const qty = cartItem?.quantity ?? 0;
 
   return (
@@ -189,15 +194,19 @@ function FestivePackCard({ pack }: { pack: FestivePack }) {
           {qty > 0 ? (
             <View style={styles.packStepper}>
               <TouchableOpacity
-                onPress={() => removeFromCart(cartItemId)}
+                onPress={() => removeFromCart(cartItem ? cartItem.serviceId : cartItemId)}
                 style={styles.packStepperBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Decrease pack quantity"
               >
                 <Ionicons name="remove" size={14} color="#FFFFFF" />
               </TouchableOpacity>
               <Text style={styles.packStepperVal}>{qty}</Text>
               <TouchableOpacity
-                onPress={() => addToCart(cartItemId)}
+                onPress={() => addToCart(cartItemId, undefined, pack.price)}
                 style={styles.packStepperBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Increase pack quantity"
               >
                 <Ionicons name="add" size={14} color="#FFFFFF" />
               </TouchableOpacity>
@@ -205,8 +214,10 @@ function FestivePackCard({ pack }: { pack: FestivePack }) {
           ) : (
             <TouchableOpacity
               style={styles.packAddBtn}
-              onPress={() => addToCart(cartItemId)}
+              onPress={() => addToCart(cartItemId, undefined, pack.price)}
               activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={`Book ${pack.name} for ${formatCurrency(pack.price)}`}
             >
               <Text style={styles.packAddBtnText}>BOOK PACK</Text>
             </TouchableOpacity>
@@ -272,13 +283,15 @@ export default function HomeScreen() {
 
   // Filter services
   const filteredServices = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
     return SERVICES.filter((s) => {
       const matchesCategory =
         selectedCategory === 'all' || s.category === selectedCategory;
       const matchesSearch =
-        searchQuery.trim().length === 0 ||
-        s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.description.toLowerCase().includes(searchQuery.toLowerCase());
+        q.length === 0 ||
+        s.name.toLowerCase().includes(q) ||
+        s.description.toLowerCase().includes(q) ||
+        s.category.toLowerCase().includes(q);
       return matchesCategory && matchesSearch;
     });
   }, [selectedCategory, searchQuery]);
@@ -286,13 +299,19 @@ export default function HomeScreen() {
   // Cart total amount calculation
   const cartTotalAmount = useMemo(() => {
     return cartItems.reduce((sum, item) => {
-      if (item.serviceId.startsWith('pack_')) {
-        const packId = item.serviceId.replace('pack_', '');
-        const pack = FESTIVE_PACKS.find((p) => p.id === packId);
-        return sum + (pack?.price ?? 199) * item.quantity;
+      if (
+        item.serviceId.startsWith('pack_') ||
+        item.serviceId === 'pack_1' ||
+        item.serviceId === 'pack_2' ||
+        item.serviceId === 'pack_3'
+      ) {
+        const pack = FESTIVE_PACKS.find(
+          (p) => p.id === item.serviceId || p.id === item.serviceId.replace('pack_', '')
+        );
+        return sum + (item.unitPrice ?? pack?.price ?? 199) * item.quantity;
       }
       const svc = SERVICES.find((s) => s.id === item.serviceId);
-      return sum + (svc?.price ?? 49) * item.quantity;
+      return sum + (item.unitPrice ?? svc?.price ?? 49) * item.quantity;
     }, 0);
   }, [cartItems]);
 
@@ -306,6 +325,8 @@ export default function HomeScreen() {
           style={styles.locationSelector}
           onPress={() => setLocationModalVisible(true)}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`Selected location: ${currentCity}, ${currentAddress}`}
         >
           <View style={styles.locationPinBg}>
             <Ionicons name="location" size={16} color={Colors.primary} />
@@ -325,6 +346,8 @@ export default function HomeScreen() {
           <TouchableOpacity
             style={styles.headerIconBtn}
             onPress={() => setPassModalVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel="View Tidara VIP Pass details"
           >
             <Ionicons name="gift-outline" size={20} color={Colors.primary} />
             <View style={styles.passMiniBadge}>
@@ -335,6 +358,8 @@ export default function HomeScreen() {
           <TouchableOpacity
             style={styles.avatarBtn}
             onPress={() => router.push('/profile')}
+            accessibilityRole="button"
+            accessibilityLabel="Go to Profile"
           >
             <LinearGradient
               colors={['#0B5335', '#063D26']}
@@ -403,6 +428,8 @@ export default function HomeScreen() {
           style={styles.vipPassCard}
           onPress={() => setPassModalVisible(true)}
           activeOpacity={0.9}
+          accessibilityRole="button"
+          accessibilityLabel="Tidara Pass Club: 3 Home Visits for 177 rupees"
         >
           <LinearGradient
             colors={['#FEF3C7', '#FDE68A']}
@@ -439,6 +466,8 @@ export default function HomeScreen() {
                   style={[styles.categoryPill, active && styles.categoryPillActive]}
                   onPress={() => setSelectedCategory(cat.id)}
                   activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Filter by ${cat.label}`}
                 >
                   <Ionicons
                     name={cat.icon as any}
@@ -541,6 +570,8 @@ export default function HomeScreen() {
           style={styles.floatingCartBar}
           onPress={() => router.push('/cart')}
           activeOpacity={0.9}
+          accessibilityRole="button"
+          accessibilityLabel={`View Cart with ${totalCartCount} items, total ${formatCurrency(cartTotalAmount)}`}
         >
           <View style={styles.floatingCartLeft}>
             <View style={styles.cartCountCircle}>

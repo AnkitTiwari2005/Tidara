@@ -2,6 +2,7 @@ import React from 'react';
 import { Tabs } from 'expo-router';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../constants/colors';
 import { useAppStore } from '../../store/useAppStore';
 
@@ -40,14 +41,21 @@ function TabItem({
 }
 
 export default function TabsLayout() {
-  const { cartItems } = useAppStore();
-  const totalItems = cartItems.reduce((acc, curr) => acc + curr.quantity, 0);
+  const insets = useSafeAreaInsets();
+  const bottomPadding = Math.max(insets.bottom, Platform.OS === 'ios' ? 16 : 8);
+  const tabHeight = 56 + bottomPadding;
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: [
+          styles.tabBar,
+          {
+            height: tabHeight,
+            paddingBottom: bottomPadding,
+          },
+        ],
         tabBarShowLabel: false,
       }}
     >
@@ -94,11 +102,9 @@ export default function TabsLayout() {
 const styles = StyleSheet.create({
   tabBar: {
     backgroundColor: '#FFFFFF',
-    height: Platform.OS === 'ios' ? 84 : 68,
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
     paddingTop: 8,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 10,
     elevation: 12,
     shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: -4 },

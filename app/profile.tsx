@@ -5,33 +5,40 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Modal,
   TextInput,
   Alert,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, formatCurrency } from '../constants/colors';
 import { useAppStore } from '../store/useAppStore';
-import { updateUserProfile } from '../lib/supabase';
+import { updateUserProfile, deleteUserAccount, normalizePhone } from '../lib/supabase';
+import TermsModal from '../components/TermsModal';
+import TidaraPassModal from '../components/TidaraPassModal';
 
 const MENU_ITEMS = [
-  { id: 'refer', icon: 'gift-outline' as const, label: 'Refer & Earn ₹100', badge: 'FREE CASH', color: '#D97706', bg: '#FEF3C7' },
-  { id: 'whatsapp', icon: 'logo-whatsapp' as const, label: 'WhatsApp Notification Settings', badge: 'ACTIVE', color: '#15803D', bg: '#DCFCE7' },
   { id: 'address', icon: 'location-outline' as const, label: 'Saved Addresses', badge: null, color: '#2563EB', bg: '#EFF6FF' },
+  { id: 'whatsapp', icon: 'logo-whatsapp' as const, label: 'WhatsApp Order Updates', badge: 'ACTIVE', color: '#15803D', bg: '#DCFCE7' },
   { id: 'help', icon: 'help-circle-outline' as const, label: 'Help & 24/7 Support', badge: null, color: '#059669', bg: '#ECFDF5' },
   { id: 'terms', icon: 'document-text-outline' as const, label: 'Terms of Service', badge: null, color: '#475569', bg: '#F1F5F9' },
-  { id: 'privacy', icon: 'shield-checkmark-outline' as const, label: 'Privacy Policy', badge: null, color: '#475569', bg: '#F1F5F9' },
+  { id: 'privacy', icon: 'shield-checkmark-outline' as const, label: 'Privacy & Data Policy', badge: null, color: '#475569', bg: '#F1F5F9' },
 ];
 
 export default function ProfileScreen() {
-  const { user, walletBalance, setUser, saveUserToDB, logout } = useAppStore();
+  const { user, walletBalance, setUser, saveUserToDB, logout, addToCart } = useAppStore();
 
   const [editVisible, setEditVisible] = useState(false);
+  const [termsVisible, setTermsVisible] = useState(false);
+  const [termsType, setTermsType] = useState<'terms' | 'privacy'>('terms');
+  const [passVisible, setPassVisible] = useState(false);
+
   const [firstName, setFirstName] = useState(user?.firstName ?? '');
   const [lastName, setLastName] = useState(user?.lastName ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
@@ -41,12 +48,17 @@ export default function ProfileScreen() {
     ? `${user.firstName} ${user.lastName ?? ''}`.trim()
     : 'Valued Guest';
   const displayPhone = user?.phone
-    ? user.phone.startsWith('+91')
-      ? user.phone
-      : `+91 ${user.phone}`
-    : '+91 98765 43210';
+    ? normalizePhone(user.phone)
+    : 'Not verified';
 
   const openEdit = () => {
+    if (!user) {
+      Alert.alert('Sign in Required', 'Please log in to edit your profile information.', [
+        { text: 'Sign In', onPress: () => router.push('/(auth)/login') },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+      return;
+    }
     setFirstName(user?.firstName ?? '');
     setLastName(user?.lastName ?? '');
     setEmail(user?.email ?? '');
@@ -58,28 +70,28 @@ export default function ProfileScreen() {
       Alert.alert('Required Field', 'Please provide at least your first name.');
       return;
     }
+    if (!user) return;
+
     setSaving(true);
     try {
+      const canonicalPhone = normalizePhone(user.phone);
       const updated = {
-        id: user?.id ?? Date.now().toString(),
-        phone: user?.phone ?? '',
+        id: user.id,
+        phone: canonicalPhone,
         firstName: firstName.trim(),
         lastName: lastName.trim() || undefined,
         email: email.trim() || undefined,
       };
+
       setUser(updated);
       await saveUserToDB(updated);
 
-      if (user?.phone) {
-        const phone = user.phone.startsWith('+91')
-          ? user.phone
-          : `+91${user.phone}`;
-        await updateUserProfile(phone, {
-          first_name: firstName.trim(),
-          last_name: lastName.trim() || undefined,
-          email: email.trim() || undefined,
-        });
-      }
+      await updateUserProfile(canonicalPhone, {
+        first_name: firstName.trim(),
+        last_name: lastName.trim() || undefined,
+        email: email.trim() || undefined,
+      });
+
       setEditVisible(false);
       Alert.alert('Profile Saved', 'Your information has been updated.');
     } catch {
@@ -103,18 +115,55 @@ export default function ProfileScreen() {
     ]);
   };
 
+  const handleDeleteAccount = () => {
+    if (!user?.phone) {
+      logout();
+      router.replace('/(auth)/login');
+      return;
+    }
+    Alert.alert(
+      'Delete Account & Data?',
+      'This will permanently delete your account, saved addresses, wallet balance, and order history in compliance with DPDP Act 2023. This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Permanently Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setSaving(true);
+            await deleteUserAccount(user.phone);
+            logout();
+            setSaving(false);
+            Alert.alert('Account Deleted', 'Your personal account and data have been removed.');
+            router.replace('/(auth)/login');
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
+          <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Account & Settings</Text>
-        <TouchableOpacity onPress={openEdit} style={styles.editHeaderBtn}>
-          <Ionicons name="create-outline" size={20} color="#A7F3D0" />
+        <TouchableOpacity
+          onPress={openEdit}
+          style={styles.editHeaderBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Edit profile"
+        >
+          <Ionicons name="create-outline" size={20} color={Colors.primary} />
         </TouchableOpacity>
       </View>
 
@@ -137,14 +186,14 @@ export default function ProfileScreen() {
           <View style={styles.userInfo}>
             <View style={styles.userNameRow}>
               <Text style={styles.userName}>{displayName}</Text>
-              <Ionicons name="checkmark-circle" size={16} color="#059669" />
+              {user && <Ionicons name="checkmark-circle" size={16} color="#059669" />}
             </View>
             <Text style={styles.userPhone}>{displayPhone}</Text>
             {user?.email && <Text style={styles.userEmail}>{user.email}</Text>}
           </View>
 
           <TouchableOpacity style={styles.editBtn} onPress={openEdit}>
-            <Text style={styles.editBtnText}>Edit</Text>
+            <Text style={styles.editBtnText}>{user ? 'Edit' : 'Sign In'}</Text>
           </TouchableOpacity>
         </View>
 
@@ -154,6 +203,8 @@ export default function ProfileScreen() {
             style={styles.tileCard}
             onPress={() => router.push('/(tabs)/money')}
             activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={`Wallet with balance of ${formatCurrency(walletBalance)}`}
           >
             <View style={[styles.tileIconBox, { backgroundColor: '#ECFDF5' }]}>
               <Ionicons name="wallet-outline" size={20} color={Colors.primary} />
@@ -166,6 +217,8 @@ export default function ProfileScreen() {
             style={styles.tileCard}
             onPress={() => router.push('/(tabs)/bookings')}
             activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="View all bookings"
           >
             <View style={[styles.tileIconBox, { backgroundColor: '#EFF6FF' }]}>
               <Ionicons name="calendar-outline" size={20} color="#2563EB" />
@@ -176,14 +229,16 @@ export default function ProfileScreen() {
 
           <TouchableOpacity
             style={styles.tileCard}
-            onPress={() => router.push('/recurring-booking' as any)}
+            onPress={() => setPassVisible(true)}
             activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="View VIP Pass"
           >
             <View style={[styles.tileIconBox, { backgroundColor: '#FEF3C7' }]}>
               <Ionicons name="gift-outline" size={20} color="#D97706" />
             </View>
             <Text style={styles.tileLabel}>VIP Pass</Text>
-            <Text style={styles.tileValue}>3 Visits</Text>
+            <Text style={styles.tileValue}>Special</Text>
           </TouchableOpacity>
         </View>
 
@@ -197,15 +252,26 @@ export default function ProfileScreen() {
                 index < MENU_ITEMS.length - 1 && styles.menuItemBorder,
               ]}
               onPress={() => {
-                if (item.id === 'help') router.push('/help');
-                else if (item.id === 'address') router.push('/(onboarding)/confirm-location');
-                else if (item.id === 'refer') {
-                  Alert.alert('Referral Code', 'Share code TIDARA100 with your neighbours. Both of you get ₹100 on their first completed service!');
-                } else {
-                  Alert.alert(item.label, 'Feature is active on your account.');
+                if (item.id === 'help') {
+                  router.push('/help');
+                } else if (item.id === 'address') {
+                  router.push('/add-address');
+                } else if (item.id === 'terms') {
+                  setTermsType('terms');
+                  setTermsVisible(true);
+                } else if (item.id === 'privacy') {
+                  setTermsType('privacy');
+                  setTermsVisible(true);
+                } else if (item.id === 'whatsapp') {
+                  Alert.alert(
+                    'WhatsApp Notifications',
+                    'Visit alerts and arrival updates are sent to your verified number.'
+                  );
                 }
               }}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={item.label}
             >
               <View style={[styles.menuIconBox, { backgroundColor: item.bg }]}>
                 <Ionicons name={item.icon} size={18} color={item.color} />
@@ -227,113 +293,153 @@ export default function ProfileScreen() {
         {/* Log Out Button */}
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
           <Ionicons name="log-out-outline" size={20} color={Colors.error} />
-          <Text style={styles.logoutText}>Log Out</Text>
+          <Text style={styles.logoutText}>{user ? 'Log Out' : 'Switch Account'}</Text>
         </TouchableOpacity>
+
+        {/* Delete Account (App Store & DPDP Compliant) */}
+        {user && (
+          <TouchableOpacity style={styles.deleteBtn} onPress={handleDeleteAccount} activeOpacity={0.8}>
+            <Ionicons name="trash-outline" size={18} color="#DC2626" />
+            <Text style={styles.deleteText}>Delete Account & Data</Text>
+          </TouchableOpacity>
+        )}
 
         {/* App Version */}
         <Text style={styles.versionText}>Tidara v1.0.0 • Made with ❤️ in India</Text>
       </ScrollView>
 
       {/* Edit Profile Modal */}
-      <Modal visible={editVisible} transparent animationType="slide">
+      <Modal
+        visible={editVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEditVisible(false)}
+      >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Edit Profile</Text>
-              <TouchableOpacity onPress={() => setEditVisible(false)}>
-                <Ionicons name="close" size={24} color={Colors.textPrimary} />
-              </TouchableOpacity>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ width: '100%' }}
+          >
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Edit Profile</Text>
+                <TouchableOpacity
+                  onPress={() => setEditVisible(false)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close edit profile dialog"
+                >
+                  <Ionicons name="close" size={24} color={Colors.textPrimary} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.modalBody}>
+                <View style={styles.modalField}>
+                  <Text style={styles.modalLabel}>First Name</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    value={firstName}
+                    onChangeText={setFirstName}
+                    placeholder="First Name"
+                    autoCapitalize="words"
+                  />
+                </View>
+
+                <View style={styles.modalField}>
+                  <Text style={styles.modalLabel}>Last Name</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    value={lastName}
+                    onChangeText={setLastName}
+                    placeholder="Last Name"
+                    autoCapitalize="words"
+                  />
+                </View>
+
+                <View style={styles.modalField}>
+                  <Text style={styles.modalLabel}>Email Address</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    value={email}
+                    onChangeText={setEmail}
+                    placeholder="email@example.com"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.saveModalBtn, saving && { opacity: 0.7 }]}
+                  onPress={handleSaveProfile}
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <Text style={styles.saveModalBtnText}>Save Changes</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
-
-            <View style={styles.modalBody}>
-              <View style={styles.modalField}>
-                <Text style={styles.modalLabel}>First Name</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  value={firstName}
-                  onChangeText={setFirstName}
-                  placeholder="First Name"
-                />
-              </View>
-
-              <View style={styles.modalField}>
-                <Text style={styles.modalLabel}>Last Name</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  value={lastName}
-                  onChangeText={setLastName}
-                  placeholder="Last Name"
-                />
-              </View>
-
-              <View style={styles.modalField}>
-                <Text style={styles.modalLabel}>Email</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  value={email}
-                  onChangeText={setEmail}
-                  placeholder="Email"
-                  keyboardType="email-address"
-                />
-              </View>
-
-              <TouchableOpacity
-                style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
-                onPress={handleSaveProfile}
-                disabled={saving}
-              >
-                {saving ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <Text style={styles.saveBtnText}>Save Changes</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
+
+      {/* Terms & Privacy Modal */}
+      <TermsModal
+        visible={termsVisible}
+        onClose={() => setTermsVisible(false)}
+        type={termsType}
+      />
+
+      {/* Pass Modal */}
+      <TidaraPassModal
+        visible={passVisible}
+        onClose={() => setPassVisible(false)}
+        onBook={() => {
+          setPassVisible(false);
+          addToCart('pack_1', 180, 129);
+          router.push('/cart');
+        }}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#063D26' },
+  safeArea: { flex: 1, backgroundColor: '#FFFFFF' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: '#063D26',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
   },
   backBtn: { padding: 6 },
   headerTitle: {
     fontSize: 17,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: Colors.textPrimary,
   },
   editHeaderBtn: { padding: 6 },
   scrollView: { flex: 1, backgroundColor: '#F8FAFC' },
-  scrollContent: { padding: 16, gap: 14, paddingBottom: 40 },
+  scrollContent: { padding: 16, gap: 16, paddingBottom: 40 },
   userCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
-    padding: 18,
-    borderWidth: 1,
+    padding: 16,
+    borderWidth: 1.5,
     borderColor: '#E2E8F0',
     gap: 14,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
   },
   avatarCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -349,7 +455,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   userName: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '800',
     color: Colors.textPrimary,
   },
@@ -367,14 +473,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
-    backgroundColor: '#ECFDF5',
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
+    backgroundColor: '#F1F5F9',
   },
   editBtnText: {
     fontSize: 12,
-    fontWeight: '800',
-    color: Colors.primary,
+    fontWeight: '700',
+    color: Colors.textPrimary,
   },
   tilesRow: {
     flexDirection: 'row',
@@ -385,40 +489,39 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 14,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#E2E8F0',
-    alignItems: 'center',
     gap: 6,
   },
   tileIconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
   tileLabel: {
     fontSize: 11,
-    color: Colors.textSecondary,
-    fontWeight: '600',
+    fontWeight: '700',
+    color: Colors.textMuted,
+    marginTop: 2,
   },
   tileValue: {
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: '900',
     color: Colors.textPrimary,
   },
   menuContainer: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#E2E8F0',
     overflow: 'hidden',
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    padding: 16,
     gap: 12,
   },
   menuItemBorder: {
@@ -428,26 +531,26 @@ const styles = StyleSheet.create({
   menuIconBox: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   menuLabel: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: Colors.textPrimary,
   },
   badgePill: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: '#DCFCE7',
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 8,
+    borderRadius: 6,
   },
   badgePillText: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '800',
-    color: '#B45309',
+    color: '#15803D',
   },
   logoutBtn: {
     flexDirection: 'row',
@@ -457,75 +560,79 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     paddingVertical: 14,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#FEE2E2',
-    marginTop: 4,
   },
   logoutText: {
     fontSize: 14,
     fontWeight: '800',
     color: Colors.error,
   },
+  deleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+  },
+  deleteText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
   versionText: {
     textAlign: 'center',
     fontSize: 11,
     color: Colors.textMuted,
-    marginTop: 8,
+    marginTop: 4,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
     justifyContent: 'flex-end',
   },
   modalCard: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    padding: 24,
-    paddingBottom: 40,
+    padding: 20,
     gap: 16,
   },
   modalHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: '800',
     color: Colors.textPrimary,
   },
-  modalBody: {
-    gap: 14,
-  },
-  modalField: {
-    gap: 6,
-  },
+  modalBody: { gap: 14 },
+  modalField: { gap: 6 },
   modalLabel: {
     fontSize: 12,
     fontWeight: '700',
     color: Colors.textSecondary,
   },
   modalInput: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
     borderWidth: 1.5,
     borderColor: '#E2E8F0',
-    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    fontSize: 15,
+    fontSize: 14,
     color: Colors.textPrimary,
   },
-  saveBtn: {
+  saveModalBtn: {
     backgroundColor: Colors.primary,
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 6,
   },
-  saveBtnDisabled: {
-    backgroundColor: Colors.gray400,
-  },
-  saveBtnText: {
+  saveModalBtnText: {
     fontSize: 15,
     fontWeight: '800',
     color: '#FFFFFF',

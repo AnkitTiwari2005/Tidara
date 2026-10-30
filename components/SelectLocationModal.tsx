@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   Modal,
   TouchableWithoutFeedback,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
@@ -18,6 +20,8 @@ interface LocationModalProps {
 }
 
 export default function SelectLocationModal({ visible, onClose }: LocationModalProps) {
+  const [search, setSearch] = useState('');
+
   const handleCurrentLocation = () => {
     onClose();
     router.push('/(onboarding)/confirm-location');
@@ -25,7 +29,7 @@ export default function SelectLocationModal({ visible, onClose }: LocationModalP
 
   const handleNewAddress = () => {
     onClose();
-    router.push('/(onboarding)/confirm-location');
+    router.push('/add-address');
   };
 
   return (
@@ -38,59 +42,77 @@ export default function SelectLocationModal({ visible, onClose }: LocationModalP
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.overlay}>
           <TouchableWithoutFeedback>
-            <View style={styles.container}>
-              {/* Handle bar */}
-              <View style={styles.handle} />
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              style={styles.keyboardContainer}
+            >
+              <View style={styles.container}>
+                {/* Handle bar */}
+                <View style={styles.handle} />
 
-              <View style={styles.headerRow}>
-                <Text style={styles.title}>Select Service Location</Text>
-                <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-                  <Ionicons name="close" size={18} color={Colors.textPrimary} />
-                </TouchableOpacity>
+                <View style={styles.headerRow}>
+                  <Text style={styles.title}>Select Service Location</Text>
+                  <TouchableOpacity
+                    onPress={onClose}
+                    style={styles.closeBtn}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    accessibilityLabel="Close location selection"
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="close" size={18} color={Colors.textPrimary} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Search */}
+                <View style={styles.searchContainer}>
+                  <Ionicons name="search" size={18} color={Colors.textMuted} />
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Search apartment, road or landmark"
+                    placeholderTextColor={Colors.textMuted}
+                    value={search}
+                    onChangeText={setSearch}
+                    onSubmitEditing={handleCurrentLocation}
+                    returnKeyType="search"
+                  />
+                </View>
+
+                {/* Options */}
+                <View style={styles.optionsRow}>
+                  <TouchableOpacity
+                    style={styles.optionCard}
+                    onPress={handleCurrentLocation}
+                    activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Use current GPS location"
+                  >
+                    <View style={[styles.optionIconBg, { backgroundColor: '#ECFDF5' }]}>
+                      <Ionicons name="navigate" size={20} color={Colors.primary} />
+                    </View>
+                    <View>
+                      <Text style={styles.optionLabel}>Current GPS</Text>
+                      <Text style={styles.optionSub}>Auto-detect location</Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.optionCard}
+                    onPress={handleNewAddress}
+                    activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Add house and flat address"
+                  >
+                    <View style={[styles.optionIconBg, { backgroundColor: '#EFF6FF' }]}>
+                      <Ionicons name="add" size={22} color="#2563EB" />
+                    </View>
+                    <View>
+                      <Text style={styles.optionLabel}>New Address</Text>
+                      <Text style={styles.optionSub}>Add flat / house #</Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
               </View>
-
-              {/* Search */}
-              <View style={styles.searchContainer}>
-                <Ionicons name="search" size={18} color={Colors.textMuted} />
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Search apartment, road or landmark"
-                  placeholderTextColor={Colors.textMuted}
-                  onSubmitEditing={handleCurrentLocation}
-                />
-              </View>
-
-              {/* Options */}
-              <View style={styles.optionsRow}>
-                <TouchableOpacity
-                  style={styles.optionCard}
-                  onPress={handleCurrentLocation}
-                  activeOpacity={0.8}
-                >
-                  <View style={[styles.optionIconBg, { backgroundColor: '#ECFDF5' }]}>
-                    <Ionicons name="navigate" size={20} color={Colors.primary} />
-                  </View>
-                  <View>
-                    <Text style={styles.optionLabel}>Current GPS</Text>
-                    <Text style={styles.optionSub}>Auto-detect location</Text>
-                  </View>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.optionCard}
-                  onPress={handleNewAddress}
-                  activeOpacity={0.8}
-                >
-                  <View style={[styles.optionIconBg, { backgroundColor: '#EFF6FF' }]}>
-                    <Ionicons name="add" size={22} color="#2563EB" />
-                  </View>
-                  <View>
-                    <Text style={styles.optionLabel}>New Address</Text>
-                    <Text style={styles.optionSub}>Add flat / house #</Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
-            </View>
+            </KeyboardAvoidingView>
           </TouchableWithoutFeedback>
         </View>
       </TouchableWithoutFeedback>
@@ -103,6 +125,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.45)',
     justifyContent: 'flex-end',
+  },
+  keyboardContainer: {
+    width: '100%',
   },
   container: {
     backgroundColor: '#FFFFFF',

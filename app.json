@@ -16,6 +16,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1A5C38"
       },
+      "versionCode": 1,
       "package": "com.tidara.app",
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
@@ -42,7 +43,7 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow Tidara to use your location to find service providers near you."
+          "locationWhenInUsePermission": "Allow Tidara to use your location to find service providers near you."
         }
       ],
 

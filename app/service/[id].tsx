@@ -5,10 +5,9 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Image,
-  Dimensions,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -45,21 +44,46 @@ export default function ServiceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [selectedDurationIndex, setSelectedDurationIndex] = useState(0);
 
-  const { addToCart, removeFromCart, cartItems } = useAppStore();
+  const { addToCart, removeFromCart, cartItems, getCartCount } = useAppStore();
 
   const service =
     SERVICES.find((s) => s.id === id) ||
-    FESTIVE_PACKS.find((p) => p.id === id) ||
-    SERVICES[0];
+    FESTIVE_PACKS.find((p) => p.id === id);
+
+  if (!service) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar style="dark" />
+        <View style={styles.notFoundContainer}>
+          <Ionicons name="alert-circle-outline" size={54} color={Colors.textMuted} />
+          <Text style={styles.notFoundTitle}>Service Not Found</Text>
+          <Text style={styles.notFoundSub}>This service is no longer available or the link is invalid.</Text>
+          <TouchableOpacity style={styles.backHomeBtn} onPress={() => router.replace('/(tabs)')}>
+            <Text style={styles.backHomeBtnText}>Back to Home</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   const basePrice = (service as any).price || 99;
-  const originalPrice = (service as any).originalPrice || 199;
-  const currentPrice = Math.round(
-    basePrice * DURATION_OPTIONS[selectedDurationIndex].priceMultiplier
-  );
+  const baseOriginalPrice = (service as any).originalPrice || Math.round(basePrice * 1.5);
+  const currentMultiplier = DURATION_OPTIONS[selectedDurationIndex].priceMultiplier;
+  const currentPrice = Math.round(basePrice * currentMultiplier);
+  const currentOriginalPrice = Math.round(baseOriginalPrice * currentMultiplier);
+  const discountPct = Math.max(10, Math.round(((currentOriginalPrice - currentPrice) / currentOriginalPrice) * 100));
 
   const cartItem = cartItems.find((ci) => ci.serviceId === service.id);
   const qty = cartItem?.quantity ?? 0;
+  const cartCount = getCartCount();
+
+  const handleAdd = () => {
+    addToCart(
+      service.id,
+      DURATION_OPTIONS[selectedDurationIndex].mins,
+      currentPrice
+    );
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -67,7 +91,12 @@ export default function ServiceDetailScreen() {
 
       {/* Top Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
           <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>
@@ -76,9 +105,15 @@ export default function ServiceDetailScreen() {
         <TouchableOpacity
           onPress={() => router.push('/cart')}
           style={styles.cartIconBtn}
+          accessibilityRole="button"
+          accessibilityLabel={`Cart with ${cartCount} items`}
         >
           <Ionicons name="cart-outline" size={22} color={Colors.textPrimary} />
-          {cartItems.length > 0 && <View style={styles.cartBadge} />}
+          {cartCount > 0 && (
+            <View style={styles.cartBadge}>
+              <Text style={styles.cartBadgeText}>{cartCount}</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -110,9 +145,9 @@ export default function ServiceDetailScreen() {
         <View style={styles.detailCard}>
           <View style={styles.ratingRow}>
             <View style={styles.ratingBadge}>
-              <Ionicons name="star" size={13} color="#F59E0B" />
-              <Text style={styles.ratingScore}>4.9</Text>
-              <Text style={styles.ratingCount}>(240k+ verified visits)</Text>
+              <Ionicons name="star" size={13} color="#D97706" />
+              <Text style={styles.ratingScore}>{(service as any).rating ?? 4.9}</Text>
+              <Text style={styles.ratingCount}>({(service as any).ratingCount ?? 'Top Rated'})</Text>
             </View>
           </View>
 
@@ -124,9 +159,9 @@ export default function ServiceDetailScreen() {
 
           <View style={styles.priceRow}>
             <Text style={styles.currentPrice}>{formatCurrency(currentPrice)}</Text>
-            <Text style={styles.originalPrice}>{formatCurrency(originalPrice)}</Text>
+            <Text style={styles.originalPrice}>{formatCurrency(currentOriginalPrice)}</Text>
             <View style={styles.saveBadge}>
-              <Text style={styles.saveBadgeText}>SAVE 50%</Text>
+              <Text style={styles.saveBadgeText}>SAVE {discountPct}%</Text>
             </View>
           </View>
         </View>
@@ -147,6 +182,8 @@ export default function ServiceDetailScreen() {
                   ]}
                   onPress={() => setSelectedDurationIndex(index)}
                   activeOpacity={0.8}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: isSelected }}
                 >
                   <View style={styles.durationLeft}>
                     <Ionicons
@@ -175,11 +212,10 @@ export default function ServiceDetailScreen() {
           <Text style={styles.sectionTitle}>What's Included in This Service</Text>
           <View style={styles.checkList}>
             {[
-              '100% Background-verified & vaccinated professional',
+              'Background-verified professional equipped with specialized tools',
               'Eco-friendly antiseptic cleaning solutions included',
               'Deep scrubbing of corners, tracks & hidden spots',
-              'Post-service quality inspection with customer',
-              'Damage cover up to ₹10,000 included for free',
+              'Post-service quality inspection with customer walkthrough',
             ].map((text, idx) => (
               <View key={idx} style={styles.checkItem}>
                 <Ionicons name="checkmark-circle" size={18} color="#059669" />
@@ -211,8 +247,12 @@ export default function ServiceDetailScreen() {
       {/* Sticky Bottom Action Bar */}
       <View style={styles.footerBar}>
         <View>
-          <Text style={styles.footerPriceLabel}>TOTAL PRICE</Text>
-          <Text style={styles.footerPrice}>{formatCurrency(currentPrice)}</Text>
+          <Text style={styles.footerPriceLabel}>
+            {qty > 1 ? `TOTAL FOR ${qty} VISITS` : 'ITEM PRICE'}
+          </Text>
+          <Text style={styles.footerPrice}>
+            {formatCurrency(currentPrice * Math.max(1, qty))}
+          </Text>
         </View>
 
         {qty > 0 ? (
@@ -220,13 +260,19 @@ export default function ServiceDetailScreen() {
             <TouchableOpacity
               onPress={() => removeFromCart(service.id)}
               style={styles.stepperBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Decrease quantity"
             >
               <Ionicons name="remove" size={16} color="#FFFFFF" />
             </TouchableOpacity>
             <Text style={styles.stepperValue}>{qty}</Text>
             <TouchableOpacity
-              onPress={() => addToCart(service.id)}
+              onPress={handleAdd}
               style={styles.stepperBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Increase quantity"
             >
               <Ionicons name="add" size={16} color="#FFFFFF" />
             </TouchableOpacity>
@@ -234,8 +280,10 @@ export default function ServiceDetailScreen() {
         ) : (
           <TouchableOpacity
             style={styles.addCartBtn}
-            onPress={() => addToCart(service.id)}
+            onPress={handleAdd}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Add service to booking"
           >
             <Ionicons name="add" size={18} color="#FFFFFF" />
             <Text style={styles.addCartBtnText}>Add to Booking</Text>
@@ -271,12 +319,20 @@ const styles = StyleSheet.create({
   },
   cartBadge: {
     position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    top: 2,
+    right: 2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
     backgroundColor: Colors.error,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  cartBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   scrollView: { flex: 1, backgroundColor: '#F8FAFC' },
   scrollContent: { padding: 16, gap: 14, paddingBottom: 90 },
@@ -300,27 +356,30 @@ const styles = StyleSheet.create({
   },
   heroBadgeRow: {
     position: 'absolute',
-    bottom: 14,
-    left: 14,
+    bottom: 12,
+    left: 12,
+    flexDirection: 'row',
   },
   instantDispatchPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    backgroundColor: 'rgba(6, 61, 38, 0.85)',
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.4)',
   },
   instantDispatchText: {
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '700',
     color: '#A7F3D0',
   },
   detailCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
-    padding: 18,
+    padding: 16,
     borderWidth: 1,
     borderColor: '#E2E8F0',
     gap: 8,
@@ -328,26 +387,29 @@ const styles = StyleSheet.create({
   ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
   },
   ratingBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
   },
   ratingScore: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
-    color: Colors.textPrimary,
+    color: '#B45309',
   },
   ratingCount: {
     fontSize: 11,
-    color: Colors.textMuted,
+    color: '#92400E',
+    fontWeight: '600',
   },
   serviceTitle: {
     fontSize: 20,
-    fontWeight: '800',
+    fontWeight: '900',
     color: Colors.textPrimary,
     letterSpacing: -0.3,
   },
@@ -360,33 +422,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'baseline',
     gap: 8,
-    marginTop: 8,
+    marginTop: 4,
   },
   currentPrice: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '900',
-    color: Colors.textPrimary,
+    color: Colors.primary,
   },
   originalPrice: {
-    fontSize: 14,
+    fontSize: 15,
     color: Colors.textMuted,
     textDecorationLine: 'line-through',
   },
   saveBadge: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: '#ECFDF5',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
   },
   saveBadgeText: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#B45309',
+    color: '#059669',
   },
   sectionCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
-    padding: 18,
+    padding: 16,
     borderWidth: 1,
     borderColor: '#E2E8F0',
     gap: 12,
@@ -401,17 +465,17 @@ const styles = StyleSheet.create({
   },
   durationOption: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
+    justifyContent: 'space-between',
     padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
     borderWidth: 1.5,
     borderColor: '#E2E8F0',
   },
   durationOptionSelected: {
-    borderColor: Colors.primary,
     backgroundColor: '#ECFDF5',
+    borderColor: Colors.primary,
   },
   durationLeft: {
     flexDirection: 'row',
@@ -428,17 +492,17 @@ const styles = StyleSheet.create({
     color: Colors.primary,
   },
   durationPrice: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
     color: Colors.textPrimary,
   },
   checkList: {
-    gap: 10,
+    gap: 8,
   },
   checkItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 10,
+    gap: 8,
   },
   checkItemText: {
     flex: 1,
@@ -447,7 +511,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   stepsList: {
-    gap: 14,
+    gap: 10,
   },
   stepRow: {
     flexDirection: 'row',
@@ -462,10 +526,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stepInfo: { flex: 1 },
+  stepInfo: {
+    flex: 1,
+  },
   stepTitle: {
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '700',
     color: Colors.textPrimary,
   },
   stepDesc: {
@@ -475,23 +541,14 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   footerBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 14,
+    backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 8,
   },
   footerPriceLabel: {
     fontSize: 10,
@@ -502,7 +559,29 @@ const styles = StyleSheet.create({
   footerPrice: {
     fontSize: 20,
     fontWeight: '900',
-    color: Colors.textPrimary,
+    color: Colors.primary,
+  },
+  stepperContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    gap: 10,
+  },
+  stepperBtn: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperValue: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    minWidth: 16,
+    textAlign: 'center',
   },
   addCartBtn: {
     flexDirection: 'row',
@@ -510,35 +589,42 @@ const styles = StyleSheet.create({
     gap: 6,
     backgroundColor: Colors.primary,
     paddingHorizontal: 22,
-    paddingVertical: 14,
-    borderRadius: 16,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 4,
+    paddingVertical: 12,
+    borderRadius: 12,
   },
   addCartBtnText: {
     fontSize: 14,
     fontWeight: '800',
     color: '#FFFFFF',
   },
-  stepperContainer: {
-    flexDirection: 'row',
+  notFoundContainer: {
+    flex: 1,
     alignItems: 'center',
-    backgroundColor: Colors.primary,
-    borderRadius: 14,
-    paddingHorizontal: 6,
-    paddingVertical: 4,
+    justifyContent: 'center',
+    padding: 32,
+    gap: 12,
   },
-  stepperBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  stepperValue: {
-    fontSize: 15,
+  notFoundTitle: {
+    fontSize: 20,
     fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+  notFoundSub: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  backHomeBtn: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  backHomeBtnText: {
     color: '#FFFFFF',
-    paddingHorizontal: 8,
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

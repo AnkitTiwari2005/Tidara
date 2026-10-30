@@ -5,9 +5,9 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,22 +21,36 @@ const SERVICE_FEE = 10;
 const GST_RATE = 0.05;
 
 export default function CartScreen() {
-  const [activeTab, setActiveTab] = useState<CartTab>('Instant');
-  const [couponApplied, setCouponApplied] = useState(false);
-  const { cartItems, location, addToCart, removeFromCart, clearCart } = useAppStore();
+  const {
+    cartItems,
+    location,
+    user,
+    bookingMode: savedMode,
+    scheduledDays,
+    scheduledSlot,
+    couponApplied: savedCouponApplied,
+    addToCart,
+    removeFromCart,
+    clearCart,
+    setBookingMode,
+    applyCoupon,
+    removeCoupon,
+  } = useAppStore();
+
+  const [activeTab, setActiveTab] = useState<CartTab>(savedMode || 'Instant');
+  const [couponApplied, setLocalCouponApplied] = useState(savedCouponApplied);
 
   const cartServices = cartItems
     .map((ci) => {
-      if (ci.serviceId.startsWith('pack_')) {
-        const packId = ci.serviceId.replace('pack_', '');
-        const pack = FESTIVE_PACKS.find((p) => p.id === packId);
+      if (ci.serviceId.startsWith('pack_') || ci.serviceId === 'pack_1' || ci.serviceId === 'pack_2' || ci.serviceId === 'pack_3') {
+        const pack = FESTIVE_PACKS.find((p) => p.id === ci.serviceId || p.id === ci.serviceId.replace('pack_', ''));
         if (!pack) return null;
         return {
           ...ci,
           service: {
             id: ci.serviceId,
             name: pack.name,
-            price: pack.price,
+            price: ci.unitPrice ?? pack.price,
             originalPrice: pack.originalPrice,
             duration: pack.duration,
             iconName: pack.iconName,
@@ -47,7 +61,14 @@ export default function CartScreen() {
       }
       const svc = SERVICES.find((s) => s.id === ci.serviceId);
       if (!svc) return null;
-      return { ...ci, service: svc };
+      return {
+        ...ci,
+        service: {
+          ...svc,
+          price: ci.unitPrice ?? svc.price,
+          duration: ci.durationMinutes ? `${ci.durationMinutes} mins` : svc.duration,
+        },
+      };
     })
     .filter(Boolean) as Array<{
     serviceId: string;
@@ -68,9 +89,9 @@ export default function CartScreen() {
     (sum, ci) => sum + ci.service.price * ci.quantity,
     0
   );
-  const discount = couponApplied ? Math.min(itemTotal * 0.2, 100) : 0;
+  const discount = couponApplied ? Math.min(Math.round(itemTotal * 0.2), 100) : 0;
   const taxable = Math.max(itemTotal - discount, 0);
-  const gst = parseFloat((taxable * GST_RATE).toFixed(2));
+  const gst = Math.round(taxable * GST_RATE);
   const grandTotal = taxable + (itemTotal > 0 ? SERVICE_FEE : 0) + gst;
   const totalSaved =
     cartServices.reduce(
@@ -80,11 +101,52 @@ export default function CartScreen() {
 
   const handleApplyCoupon = () => {
     if (!couponApplied) {
-      setCouponApplied(true);
-      Alert.alert('Coupon TIDARA20 Applied! 🎉', 'You saved 20% extra on your booking.');
+      if (itemTotal < 99) {
+        Alert.alert('Coupon Condition', 'Minimum item total of ₹99 required for TIDARA20.');
+        return;
+      }
+      setLocalCouponApplied(true);
+      applyCoupon('TIDARA20', discount);
+      Alert.alert('Coupon TIDARA20 Applied! 🎉', `You saved ₹${discount} on this booking.`);
     } else {
-      setCouponApplied(false);
+      setLocalCouponApplied(false);
+      removeCoupon();
     }
+  };
+
+  const handleClearCart = () => {
+    Alert.alert('Clear Cart?', 'Are you sure you want to remove all items from your booking?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Clear', style: 'destructive', onPress: clearCart },
+    ]);
+  };
+
+  const handleProceed = () => {
+    if (cartServices.length === 0) {
+      Alert.alert('Your Cart is Empty', 'Please add at least one service before proceeding to payment.');
+      return;
+    }
+
+    if (!user) {
+      Alert.alert(
+        'Login Required',
+        'Please verify your mobile number to complete your booking dispatch.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign In', onPress: () => router.push('/(auth)/login') },
+        ]
+      );
+      return;
+    }
+
+    setBookingMode(activeTab);
+    if (couponApplied) {
+      applyCoupon('TIDARA20', discount);
+    } else {
+      removeCoupon();
+    }
+
+    router.push('/payment');
   };
 
   return (
@@ -93,12 +155,22 @@ export default function CartScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
           <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Review Booking</Text>
         {cartItems.length > 0 && (
-          <TouchableOpacity onPress={clearCart} style={styles.clearBtn}>
+          <TouchableOpacity
+            onPress={handleClearCart}
+            style={styles.clearBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Clear cart"
+          >
             <Text style={styles.clearBtnText}>Clear</Text>
           </TouchableOpacity>
         )}
@@ -112,8 +184,13 @@ export default function CartScreen() {
             <TouchableOpacity
               key={tab}
               style={[styles.modeTab, isSelected && styles.modeTabSelected]}
-              onPress={() => setActiveTab(tab)}
+              onPress={() => {
+                setActiveTab(tab);
+                setBookingMode(tab);
+              }}
               activeOpacity={0.8}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: isSelected }}
             >
               <Ionicons
                 name={
@@ -139,6 +216,29 @@ export default function CartScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* Recurring Active Schedule Strip */}
+        {activeTab === 'Recurring' && (
+          <View style={styles.recurringBanner}>
+            <View style={styles.recurringBannerLeft}>
+              <Ionicons name="repeat" size={18} color={Colors.primary} />
+              <View>
+                <Text style={styles.recurringBannerTitle}>
+                  Every {scheduledDays?.join(', ') || 'Mon, Wed, Fri'}
+                </Text>
+                <Text style={styles.recurringBannerSub}>
+                  Arrival Slot: {scheduledSlot || '9:00 AM'}
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              onPress={() => router.push('/recurring-booking' as any)}
+              style={styles.changeScheduleBtn}
+            >
+              <Text style={styles.changeScheduleText}>Change</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Address Card */}
         <View style={styles.addressCard}>
           <View style={styles.addressLeft}>
@@ -147,16 +247,18 @@ export default function CartScreen() {
             </View>
             <View style={styles.addressTextContainer}>
               <Text style={styles.addressCity}>
-                Delivering to {location?.city || 'Gurugram'}
+                Delivering to {location?.city || 'Your Location'}
               </Text>
               <Text style={styles.addressFull} numberOfLines={1}>
-                {location?.address || 'Sector 48, Sohna Road, Gurugram'}
+                {location?.address || 'Set your delivery address'}
               </Text>
             </View>
           </View>
           <TouchableOpacity
             style={styles.changeAddressBtn}
-            onPress={() => router.push('/(onboarding)/confirm-location')}
+            onPress={() => router.push('/add-address')}
+            accessibilityRole="button"
+            accessibilityLabel="Change address"
           >
             <Text style={styles.changeAddressText}>Change</Text>
           </TouchableOpacity>
@@ -181,6 +283,8 @@ export default function CartScreen() {
               <TouchableOpacity
                 style={styles.browseBtn}
                 onPress={() => router.replace('/(tabs)')}
+                accessibilityRole="button"
+                accessibilityLabel="Browse services"
               >
                 <Text style={styles.browseBtnText}>Browse Services</Text>
               </TouchableOpacity>
@@ -205,9 +309,11 @@ export default function CartScreen() {
                     <Text style={styles.itemPrice}>
                       {formatCurrency(ci.service.price * ci.quantity)}
                     </Text>
-                    <Text style={styles.itemOrigPrice}>
-                      {formatCurrency(ci.service.originalPrice * ci.quantity)}
-                    </Text>
+                    {ci.service.originalPrice > ci.service.price && (
+                      <Text style={styles.itemOrigPrice}>
+                        {formatCurrency(ci.service.originalPrice * ci.quantity)}
+                      </Text>
+                    )}
                   </View>
                 </View>
 
@@ -216,6 +322,9 @@ export default function CartScreen() {
                   <TouchableOpacity
                     onPress={() => removeFromCart(ci.serviceId)}
                     style={styles.stepperBtn}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Decrease quantity"
                   >
                     <Ionicons name="remove" size={14} color={Colors.primary} />
                   </TouchableOpacity>
@@ -223,6 +332,9 @@ export default function CartScreen() {
                   <TouchableOpacity
                     onPress={() => addToCart(ci.serviceId)}
                     style={styles.stepperBtn}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Increase quantity"
                   >
                     <Ionicons name="add" size={14} color={Colors.primary} />
                   </TouchableOpacity>
@@ -235,6 +347,8 @@ export default function CartScreen() {
             <TouchableOpacity
               style={styles.addMoreRow}
               onPress={() => router.push('/(tabs)')}
+              accessibilityRole="button"
+              accessibilityLabel="Add more services"
             >
               <Ionicons name="add-circle-outline" size={18} color={Colors.primary} />
               <Text style={styles.addMoreText}>Add more services</Text>
@@ -248,6 +362,8 @@ export default function CartScreen() {
             style={styles.couponCard}
             onPress={handleApplyCoupon}
             activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Apply discount coupon"
           >
             <View style={styles.couponLeft}>
               <View style={styles.couponIconBox}>
@@ -258,7 +374,7 @@ export default function CartScreen() {
                   {couponApplied ? 'Coupon TIDARA20 Applied' : 'TIDARA20 (20% OFF)'}
                 </Text>
                 <Text style={styles.couponSub}>
-                  {couponApplied ? 'Saved ₹' + discount.toFixed(0) : 'Tap to apply coupon'}
+                  {couponApplied ? `Saved ${formatCurrency(discount)}` : 'Tap to apply coupon'}
                 </Text>
               </View>
             </View>
@@ -281,7 +397,7 @@ export default function CartScreen() {
 
             {couponApplied && (
               <View style={styles.billRow}>
-                <Text style={styles.discountLabel}>Coupon Discount (20%)</Text>
+                <Text style={styles.discountLabel}>Coupon Discount</Text>
                 <Text style={styles.discountValue}>-{formatCurrency(discount)}</Text>
               </View>
             )}
@@ -301,9 +417,11 @@ export default function CartScreen() {
             <View style={styles.billRowGrand}>
               <View>
                 <Text style={styles.grandLabel}>Grand Total</Text>
-                <Text style={styles.savedNotice}>
-                  🎉 You saved {formatCurrency(totalSaved)} on this booking!
-                </Text>
+                {totalSaved > 0 && (
+                  <Text style={styles.savedNotice}>
+                    🎉 You saved {formatCurrency(totalSaved)} on this booking!
+                  </Text>
+                )}
               </View>
               <Text style={styles.grandValue}>{formatCurrency(grandTotal)}</Text>
             </View>
@@ -329,8 +447,10 @@ export default function CartScreen() {
 
           <TouchableOpacity
             style={styles.checkoutBtn}
-            onPress={() => router.push('/payment')}
+            onPress={handleProceed}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={`Proceed to payment of ${formatCurrency(grandTotal)}`}
           >
             <Text style={styles.checkoutBtnText}>Proceed to Payment</Text>
             <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
@@ -396,6 +516,45 @@ const styles = StyleSheet.create({
   modeTabTextSelected: {
     color: '#FFFFFF',
   },
+  recurringBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#ECFDF5',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  recurringBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  recurringBannerTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
+  recurringBannerSub: {
+    fontSize: 11,
+    color: '#065F46',
+    marginTop: 1,
+  },
+  changeScheduleBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  changeScheduleText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
   scrollView: { flex: 1, backgroundColor: '#F8FAFC' },
   scrollContent: { padding: 16, gap: 14, paddingBottom: 100 },
   addressCard: {
@@ -452,12 +611,12 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: '#E2E8F0',
+    gap: 12,
   },
   sectionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 14,
+    justifyContent: 'space-between',
   },
   sectionTitle: {
     fontSize: 15,
@@ -471,6 +630,7 @@ const styles = StyleSheet.create({
   },
   emptyCart: {
     alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 32,
     gap: 8,
   },
@@ -481,47 +641,50 @@ const styles = StyleSheet.create({
   },
   emptyCartSubtitle: {
     fontSize: 12,
-    color: Colors.textSecondary,
+    color: Colors.textMuted,
     textAlign: 'center',
-    maxWidth: 220,
-    marginBottom: 8,
+    maxWidth: 240,
+    lineHeight: 18,
   },
   browseBtn: {
+    marginTop: 8,
     backgroundColor: Colors.primary,
     paddingHorizontal: 20,
     paddingVertical: 10,
-    borderRadius: 20,
+    borderRadius: 12,
   },
   browseBtnText: {
+    color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
-    color: '#FFFFFF',
   },
   cartItemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
     gap: 12,
   },
   itemIconBox: {
-    width: 44,
-    height: 44,
+    width: 42,
+    height: 42,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  itemInfo: { flex: 1 },
+  itemInfo: {
+    flex: 1,
+    gap: 2,
+  },
   itemName: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: Colors.textPrimary,
   },
   itemDuration: {
     fontSize: 11,
     color: Colors.textMuted,
-    marginTop: 2,
   },
   itemPriceRow: {
     flexDirection: 'row',
@@ -532,7 +695,7 @@ const styles = StyleSheet.create({
   itemPrice: {
     fontSize: 14,
     fontWeight: '800',
-    color: Colors.textPrimary,
+    color: Colors.primary,
   },
   itemOrigPrice: {
     fontSize: 11,
@@ -542,27 +705,31 @@ const styles = StyleSheet.create({
   stepperBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#A7F3D0',
-    backgroundColor: '#ECFDF5',
-    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    gap: 8,
   },
   stepperBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    width: 26,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   stepperQty: {
     fontSize: 13,
     fontWeight: '800',
-    color: Colors.primary,
-    paddingHorizontal: 6,
+    color: Colors.textPrimary,
+    minWidth: 14,
+    textAlign: 'center',
   },
   addMoreRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: 6,
-    paddingTop: 14,
+    paddingTop: 8,
   },
   addMoreText: {
     fontSize: 13,
@@ -595,11 +762,11 @@ const styles = StyleSheet.create({
   couponTitle: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#78350F',
+    color: '#92400E',
   },
   couponSub: {
     fontSize: 11,
-    color: '#92400E',
+    color: '#B45309',
     marginTop: 1,
   },
   couponAction: {
@@ -629,7 +796,7 @@ const styles = StyleSheet.create({
   },
   billValue: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
     color: Colors.textPrimary,
   },
   discountLabel: {
@@ -639,8 +806,8 @@ const styles = StyleSheet.create({
   },
   discountValue: {
     fontSize: 13,
+    fontWeight: '800',
     color: '#059669',
-    fontWeight: '700',
   },
   billDivider: {
     height: 1,
@@ -654,58 +821,49 @@ const styles = StyleSheet.create({
     paddingTop: 4,
   },
   grandLabel: {
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: 16,
+    fontWeight: '900',
     color: Colors.textPrimary,
   },
   savedNotice: {
     fontSize: 11,
-    fontWeight: '700',
     color: '#059669',
+    fontWeight: '700',
     marginTop: 2,
   },
   grandValue: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '900',
-    color: Colors.textPrimary,
+    color: Colors.primary,
   },
   safetyCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: '#ECFDF5',
+    backgroundColor: '#F0FDF4',
     borderRadius: 14,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#A7F3D0',
+    borderColor: '#DCFCE7',
   },
   safetyText: {
     flex: 1,
     fontSize: 11,
-    color: '#065F46',
+    color: '#15803D',
+    fontWeight: '600',
     lineHeight: 16,
-    fontWeight: '500',
   },
   footerBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 14,
+    backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 8,
   },
-  footerLeft: {},
+  footerLeft: { gap: 2 },
   footerTotalLabel: {
     fontSize: 10,
     fontWeight: '800',
@@ -715,24 +873,24 @@ const styles = StyleSheet.create({
   footerTotal: {
     fontSize: 20,
     fontWeight: '900',
-    color: Colors.textPrimary,
+    color: Colors.primary,
   },
   checkoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     backgroundColor: Colors.primary,
-    paddingHorizontal: 22,
+    paddingHorizontal: 20,
     paddingVertical: 14,
-    borderRadius: 16,
+    borderRadius: 14,
     shadowColor: Colors.primary,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.25,
     shadowRadius: 8,
     elevation: 4,
   },
   checkoutBtnText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '800',
     color: '#FFFFFF',
   },
