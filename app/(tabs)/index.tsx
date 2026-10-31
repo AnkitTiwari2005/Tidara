@@ -1220,6 +1220,7 @@ const styles = StyleSheet.create({
   trustItem: {
     alignItems: 'center',
     flex: 1,
+    paddingHorizontal: 4,
   },
   trustIconBox: {
     width: 44,
@@ -1233,11 +1234,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: Colors.textPrimary,
+    textAlign: 'center',
   },
   trustItemDesc: {
     fontSize: 10,
     color: Colors.textMuted,
-    marginTop: 1,
+    marginTop: 2,
+    textAlign: 'center',
+    lineHeight: 14,
   },
   floatingCartContainer: {
     position: 'absolute',
