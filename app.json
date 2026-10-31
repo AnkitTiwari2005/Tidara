@@ -20,7 +20,7 @@
         "backgroundColor": "#0B5335",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "versionCode": 1,
+      "versionCode": 9,
       "package": "com.tidara.app",
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",

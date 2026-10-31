@@ -1,0 +1,83 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK and CMake
+        run: |
+          ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --install "ndk;27.1.12297006" "cmake;3.22.1"
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Generate Android Project
+        run: npx expo prebuild --platform android --clean
+        env:
+          EXPO_NO_TELEMETRY: '1'
+
+      - name: Build Release APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m"
+
+      - name: Copy & Name APK
+        run: |
+          mkdir -p build-artifacts
+          find android/app/build/outputs/apk/release -name "*.apk" -exec cp {} build-artifacts/Tidara-v9-release.apk \;
+          ls -la build-artifacts/
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tidara-v9-release-apk
+          path: build-artifacts/Tidara-v9-release.apk
+          retention-days: 14
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/heads/main')
+        with:
+          tag_name: v1.0.0-build-${{ github.run_number }}
+          name: Tidara App Release v1.0.0 (Build ${{ github.run_number }})
+          body: |
+            ### Tidara v1.0.0 Android Release APK
+            - **Zero emojis**: 100% vector SVG & Ionicons icons throughout the entire app
+            - **Modal corners**: 24px rounded border radius on all corners with side spacing
+            - **Map**: Clean OpenStreetMap tiles with zero watermarks or API key requirements
+            - **Booking Details Modal**: Receipt outline icon instead of sparkles
+            - **Recurring Booking**: Checkmark status modal instead of celebration emoji
+            - **Tidara Safety Standard**: Centered trust alignment
+          files: build-artifacts/Tidara-v9-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
