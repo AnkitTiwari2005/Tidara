@@ -6,13 +6,14 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, formatCurrency } from '../constants/colors';
-import { SERVICES, FESTIVE_PACKS } from '../constants/services';
+import { SERVICES, FESTIVE_PACKS, BrandImages } from '../constants/services';
 import { useAppStore } from '../store/useAppStore';
 
 type CartTab = 'Instant' | 'Scheduled' | 'Recurring';
@@ -430,7 +431,11 @@ export default function CartScreen() {
 
         {/* Cancellation Guarantee */}
         <View style={styles.safetyCard}>
-          <Ionicons name="shield-checkmark" size={18} color="#059669" />
+          <Image
+            source={BrandImages.trustMarker1}
+            style={{ width: 22, height: 22, marginRight: 8 }}
+            resizeMode="contain"
+          />
           <Text style={styles.safetyText}>
             Free cancellation up to 10 mins before arrival. 100% money-back guarantee.
           </Text>

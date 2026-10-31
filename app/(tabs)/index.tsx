@@ -22,6 +22,7 @@ import {
   CATEGORIES,
   Service,
   FestivePack,
+  BrandImages,
 } from '../../constants/services';
 import { useAppStore } from '../../store/useAppStore';
 import TidaraPassModal from '../../components/TidaraPassModal';
@@ -47,7 +48,7 @@ function ServiceCard({ service }: { service: Service }) {
       {/* Photo Container */}
       <View style={styles.imageContainer}>
         <Image
-          source={{ uri: service.imageUrl }}
+          source={typeof service.imageUrl === 'number' ? service.imageUrl : { uri: service.imageUrl }}
           style={styles.servicePhoto}
           resizeMode="cover"
         />
@@ -158,7 +159,7 @@ function FestivePackCard({ pack }: { pack: FestivePack }) {
   return (
     <View style={styles.packCardWrapper}>
       <Image
-        source={{ uri: pack.imageUrl }}
+        source={typeof pack.imageUrl === 'number' ? pack.imageUrl : { uri: pack.imageUrl }}
         style={styles.packBgImage}
         resizeMode="cover"
       />
@@ -408,6 +409,11 @@ export default function HomeScreen() {
           >
             <View style={styles.heroBannerContent}>
               <View style={styles.liveTagRow}>
+                <Image
+                  source={BrandImages.lightning}
+                  style={{ width: 15, height: 15, marginRight: 5 }}
+                  resizeMode="contain"
+                />
                 <Animated.View style={[styles.liveDot, { opacity: pulseAnim }]} />
                 <Text style={styles.liveTagText}>15-MIN EXPRESS ARRIVAL</Text>
               </View>

@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -17,15 +18,15 @@ import { useAppStore } from '../store/useAppStore';
 import { createRazorpayOrder, getRazorpayCheckoutHTML } from '../lib/razorpay';
 import { createBooking, updateUserProfile, normalizePhone } from '../lib/supabase';
 import RazorpayWebView from '../components/RazorpayWebView';
-import { SERVICES, FESTIVE_PACKS } from '../constants/services';
+import { SERVICES, FESTIVE_PACKS, PaymentIcons, BrandImages } from '../constants/services';
 
 type PaymentMethod = 'upi' | 'phonepe' | 'gpay' | 'paytm' | 'card' | 'cod' | 'wallet';
 
 const UPI_APPS = [
-  { key: 'gpay' as PaymentMethod, label: 'Google Pay', icon: 'logo-google' as const, color: '#4285F4' },
-  { key: 'phonepe' as PaymentMethod, label: 'PhonePe', icon: 'phone-portrait-outline' as const, color: '#5F259F' },
-  { key: 'paytm' as PaymentMethod, label: 'Paytm UPI', icon: 'wallet-outline' as const, color: '#00BAF2' },
-  { key: 'upi' as PaymentMethod, label: 'Any UPI App', icon: 'qr-code-outline' as const, color: '#059669' },
+  { key: 'gpay' as PaymentMethod, label: 'Google Pay', image: PaymentIcons.googlepay },
+  { key: 'phonepe' as PaymentMethod, label: 'PhonePe', image: PaymentIcons.phonepe },
+  { key: 'paytm' as PaymentMethod, label: 'Paytm UPI', image: PaymentIcons.paytm },
+  { key: 'upi' as PaymentMethod, label: 'Any UPI App', image: PaymentIcons.upi },
 ];
 
 const SERVICE_FEE = 10;
@@ -386,8 +387,8 @@ export default function PaymentScreen() {
                   accessibilityRole="radio"
                   accessibilityState={{ selected: isSelected }}
                 >
-                  <View style={[styles.upiIconBox, { backgroundColor: `${app.color}15` }]}>
-                    <Ionicons name={app.icon} size={22} color={app.color} />
+                  <View style={[styles.upiIconBox, { backgroundColor: '#F8FAFC' }]}>
+                    <Image source={app.image} style={{ width: 28, height: 28 }} resizeMode="contain" />
                   </View>
                   <Text style={styles.upiLabel}>{app.label}</Text>
                   {isSelected && (

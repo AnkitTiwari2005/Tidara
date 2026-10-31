@@ -13,7 +13,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, formatCurrency } from '../../constants/colors';
-import { SERVICES, FESTIVE_PACKS } from '../../constants/services';
+import { SERVICES, FESTIVE_PACKS, BrandImages } from '../../constants/services';
 import { useAppStore } from '../../store/useAppStore';
 
 const DURATION_OPTIONS = [
@@ -125,7 +125,11 @@ export default function ServiceDetailScreen() {
         {/* Service Hero Photo Banner */}
         <View style={styles.heroImageBox}>
           <Image
-            source={{ uri: (service as any).imageUrl }}
+            source={
+              typeof (service as any).imageUrl === 'number'
+                ? (service as any).imageUrl
+                : { uri: (service as any).imageUrl }
+            }
             style={styles.heroPhoto}
             resizeMode="cover"
           />
@@ -135,7 +139,11 @@ export default function ServiceDetailScreen() {
           />
           <View style={styles.heroBadgeRow}>
             <View style={styles.instantDispatchPill}>
-              <Ionicons name="flash" size={12} color="#10B981" />
+              <Image
+                source={BrandImages.lightning}
+                style={{ width: 14, height: 14, marginRight: 4 }}
+                resizeMode="contain"
+              />
               <Text style={styles.instantDispatchText}>15-min Express Arrival</Text>
             </View>
           </View>

@@ -65,6 +65,17 @@ export const Colors = {
 };
 
 /**
+ * Authentic typography mapped to Lexend fonts from Pronto
+ */
+export const Fonts = {
+  regular: 'Lexend-Regular',
+  medium: 'Lexend-Medium',
+  semiBold: 'Lexend-SemiBold',
+  bold: 'Lexend-Bold',
+  black: 'Lexend-Black',
+};
+
+/**
  * Format currency with Indian Rupee symbol, handling integers, decimals, and negative numbers.
  */
 export const formatCurrency = (val: number | null | undefined): string => {

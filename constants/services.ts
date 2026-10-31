@@ -1,6 +1,46 @@
 // Service & Category Definitions
 import { Ionicons } from '@expo/vector-icons';
 
+export const ServiceImages = {
+  cleaning: require('../assets/images/services/cleaning.webp'),
+  bathroom: require('../assets/images/services/bathroom.webp'),
+  kitchen: require('../assets/images/services/kitchen.webp'),
+  utensils: require('../assets/images/services/utensils.webp'),
+  dusting: require('../assets/images/services/dusting.webp'),
+  mopping: require('../assets/images/services/mopping.webp'),
+  chopping: require('../assets/images/services/chopping.webp'),
+  laundry: require('../assets/images/services/laundry.webp'),
+  fan: require('../assets/images/services/fan.webp'),
+  window: require('../assets/images/services/window.webp'),
+  balcony: require('../assets/images/services/balcony.webp'),
+  staircase: require('../assets/images/services/staircase.webp'),
+};
+
+export const BrandImages = {
+  partnerAvatar: require('../assets/images/brand/partner_avatar.webp'),
+  partnerBadge: require('../assets/images/brand/partner_badge.webp'),
+  lightning: require('../assets/images/brand/lightning.gif'),
+  bookingCompleted: require('../assets/images/brand/booking_completed.png'),
+  bookingConfirmed: require('../assets/images/brand/booking_confirmed.webp'),
+  recurringTrust: require('../assets/images/brand/recurring_trust.webp'),
+  passFast: require('../assets/images/brand/pass_fast.webp'),
+  passShield: require('../assets/images/brand/pass_shield.webp'),
+  passDiscount: require('../assets/images/brand/pass_discount.webp'),
+  trustMarker1: require('../assets/images/brand/trust_marker1.webp'),
+  trustMarker2: require('../assets/images/brand/trust_marker2.webp'),
+  trustMarker3: require('../assets/images/brand/trust_marker3.webp'),
+};
+
+export const PaymentIcons = {
+  upi: require('../assets/images/payments/upi.webp'),
+  googlepay: require('../assets/images/payments/googlepay.webp'),
+  phonepe: require('../assets/images/payments/phonepe.webp'),
+  paytm: require('../assets/images/payments/paytm.webp'),
+  rupay: require('../assets/images/payments/rupay.webp'),
+  visa: require('../assets/images/payments/visa.webp'),
+  mastercard: require('../assets/images/payments/mastercard.webp'),
+};
+
 export interface Service {
   id: string;
   name: string;
@@ -14,7 +54,7 @@ export interface Service {
   category: 'cleaning' | 'kitchen' | 'laundry' | 'exterior';
   description: string;
   duration: string;
-  imageUrl: string;
+  imageUrl: any;
   isNew?: boolean;
   popular?: boolean;
 }
@@ -29,7 +69,7 @@ export interface FestivePack {
   iconName: keyof typeof Ionicons.glyphMap;
   gradientColors: [string, string];
   description: string;
-  imageUrl: string;
+  imageUrl: any;
   badge?: string;
 }
 
@@ -65,7 +105,7 @@ export const SERVICES: Service[] = [
     category: 'cleaning',
     description: 'Expert assistant for multi-task household help by the hour.',
     duration: '60 mins',
-    imageUrl: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=600&q=80',
+    imageUrl: ServiceImages.cleaning,
     popular: true,
   },
   {
@@ -81,7 +121,7 @@ export const SERVICES: Service[] = [
     category: 'cleaning',
     description: 'Tile descaling, stain removal, mirror buffing and disinfection.',
     duration: '45 mins',
-    imageUrl: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=600&q=80',
+    imageUrl: ServiceImages.bathroom,
     popular: true,
   },
   {
@@ -97,7 +137,7 @@ export const SERVICES: Service[] = [
     category: 'cleaning',
     description: 'Complete furniture dusting, TV unit, tables & decor wiping.',
     duration: '40 mins',
-    imageUrl: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=600&q=80',
+    imageUrl: ServiceImages.dusting,
   },
   {
     id: '4',
@@ -112,7 +152,7 @@ export const SERVICES: Service[] = [
     category: 'kitchen',
     description: 'Degreasing stovetop, chimney exterior, counters and sink scrubbing.',
     duration: '60 mins',
-    imageUrl: 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&w=600&q=80',
+    imageUrl: ServiceImages.kitchen,
     popular: true,
   },
   {
@@ -128,7 +168,7 @@ export const SERVICES: Service[] = [
     category: 'cleaning',
     description: 'Machine/manual floor scrubbing with scented anti-bacterial solution.',
     duration: '45 mins',
-    imageUrl: 'https://images.unsplash.com/photo-1527515637462-cff94eecc1ac?auto=format&fit=crop&w=600&q=80',
+    imageUrl: ServiceImages.mopping,
   },
   {
     id: '6',
@@ -143,7 +183,7 @@ export const SERVICES: Service[] = [
     category: 'cleaning',
     description: 'High-suction vacuuming to pull deep dust, mite & pet hair.',
     duration: '40 mins',
-    imageUrl: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=600&q=80',
+    imageUrl: ServiceImages.cleaning,
   },
   {
     id: '7',
@@ -158,7 +198,7 @@ export const SERVICES: Service[] = [
     category: 'kitchen',
     description: 'Vegetable peeling, fine chopping, knead atta & kitchen prep work.',
     duration: '45 mins',
-    imageUrl: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&w=600&q=80',
+    imageUrl: ServiceImages.chopping,
     popular: true,
   },
   {
@@ -174,7 +214,7 @@ export const SERVICES: Service[] = [
     category: 'kitchen',
     description: 'Sparkling dish wash, air dry stacking & food residue cleanup.',
     duration: '35 mins',
-    imageUrl: 'https://images.unsplash.com/photo-1585837575652-267c041d77d4?auto=format&fit=crop&w=600&q=80',
+    imageUrl: ServiceImages.utensils,
   },
   {
     id: '9',
@@ -189,7 +229,7 @@ export const SERVICES: Service[] = [
     category: 'kitchen',
     description: 'Shelf removal, deodorizing, food stain wipe & re-organization.',
     duration: '45 mins',
-    imageUrl: 'https://images.unsplash.com/photo-1571175443880-49e1d25b2bc5?auto=format&fit=crop&w=600&q=80',
+    imageUrl: ServiceImages.kitchen,
   },
   {
     id: '10',
@@ -204,7 +244,7 @@ export const SERVICES: Service[] = [
     category: 'laundry',
     description: 'Crisp steam ironing with neat closet-ready folding.',
     duration: '30 mins',
-    imageUrl: 'https://images.unsplash.com/photo-1517677208171-0bc6725a3e60?auto=format&fit=crop&w=600&q=80',
+    imageUrl: ServiceImages.laundry,
     popular: true,
   },
   {
@@ -220,7 +260,7 @@ export const SERVICES: Service[] = [
     category: 'kitchen',
     description: 'Interior & exterior wipe down, shelf reorganization.',
     duration: '75 mins',
-    imageUrl: 'https://images.unsplash.com/photo-1507089947368-19c1da9775ae?auto=format&fit=crop&w=600&q=80',
+    imageUrl: ServiceImages.kitchen,
   },
   {
     id: '12',
@@ -235,7 +275,7 @@ export const SERVICES: Service[] = [
     category: 'cleaning',
     description: 'Declutter, category sorting, folding and hanger arrangement.',
     duration: '75 mins',
-    imageUrl: 'https://images.unsplash.com/photo-1558997519-83ea9252def8?auto=format&fit=crop&w=600&q=80',
+    imageUrl: ServiceImages.laundry,
   },
   {
     id: '13',
@@ -250,7 +290,7 @@ export const SERVICES: Service[] = [
     category: 'cleaning',
     description: 'Glass streak-free spray wipe, mosquito mesh brushing.',
     duration: '40 mins',
-    imageUrl: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=600&q=80',
+    imageUrl: ServiceImages.window,
   },
   {
     id: '14',
@@ -265,7 +305,7 @@ export const SERVICES: Service[] = [
     category: 'cleaning',
     description: 'Blade degreasing, motor housing wipe & air vent dust removal.',
     duration: '25 mins',
-    imageUrl: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=600&q=80',
+    imageUrl: ServiceImages.fan,
     popular: true,
   },
   {
@@ -281,7 +321,7 @@ export const SERVICES: Service[] = [
     category: 'cleaning',
     description: 'Dust removal, sanitization spray & neat shoe alignment.',
     duration: '30 mins',
-    imageUrl: 'https://images.unsplash.com/photo-1549298916-b41d501d3772?auto=format&fit=crop&w=600&q=80',
+    imageUrl: ServiceImages.dusting,
   },
   {
     id: '16',
@@ -296,7 +336,7 @@ export const SERVICES: Service[] = [
     category: 'exterior',
     description: 'Foam wash, glass cleaning, tire dressing and microfiber wipe.',
     duration: '45 mins',
-    imageUrl: 'https://images.unsplash.com/photo-1520340356584-f9917d1eea6f?auto=format&fit=crop&w=600&q=80',
+    imageUrl: ServiceImages.cleaning,
     isNew: true,
   },
   {
@@ -312,7 +352,7 @@ export const SERVICES: Service[] = [
     category: 'exterior',
     description: 'Pot aerating, pruning dead leaves, watering and fertilizing.',
     duration: '45 mins',
-    imageUrl: 'https://images.unsplash.com/photo-1585320806297-9794b3e4eeae?auto=format&fit=crop&w=600&q=80',
+    imageUrl: ServiceImages.balcony,
     isNew: true,
   },
   {
@@ -328,7 +368,7 @@ export const SERVICES: Service[] = [
     category: 'cleaning',
     description: 'VIP Club Pass: 3 dedicated 60-min home help sessions.',
     duration: '3 Visits',
-    imageUrl: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=600&q=80',
+    imageUrl: BrandImages.passShield,
     popular: true,
   },
 ];
