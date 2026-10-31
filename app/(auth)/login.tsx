@@ -132,7 +132,13 @@ export default function LoginScreen() {
             {/* Input Box */}
             <View style={[styles.phoneInputRow, isFocused && styles.phoneInputRowFocused]}>
               <View style={styles.countryCodeBox}>
-                <Text style={styles.flagEmoji}>🇮🇳</Text>
+                <View style={styles.flagContainer}>
+                  <View style={[styles.flagStripe, { backgroundColor: '#FF9933' }]} />
+                  <View style={[styles.flagStripe, { backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }]}>
+                    <View style={styles.flagChakra} />
+                  </View>
+                  <View style={[styles.flagStripe, { backgroundColor: '#138808' }]} />
+                </View>
                 <Text style={styles.countryCodeText}>+91</Text>
               </View>
 
@@ -405,8 +411,22 @@ const styles = StyleSheet.create({
     borderRightWidth: 1,
     borderRightColor: '#E2E8F0',
   },
-  flagEmoji: {
-    fontSize: 18,
+  flagContainer: {
+    width: 20,
+    height: 14,
+    borderRadius: 2,
+    overflow: 'hidden',
+    borderWidth: 0.5,
+    borderColor: '#CBD5E1',
+  },
+  flagStripe: {
+    flex: 1,
+  },
+  flagChakra: {
+    width: 3.5,
+    height: 3.5,
+    borderRadius: 1.75,
+    backgroundColor: '#000080',
   },
   countryCodeText: {
     fontSize: 15,

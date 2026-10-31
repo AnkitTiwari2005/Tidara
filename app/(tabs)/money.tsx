@@ -15,7 +15,7 @@ import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, formatCurrency } from '../../constants/colors';
-import { useAppStore } from '../../store/useAppStore';
+import { useAppStore, showAppAlert } from '../../store/useAppStore';
 import { createRazorpayOrder, getRazorpayCheckoutHTML } from '../../lib/razorpay';
 import { updateUserProfile, normalizePhone } from '../../lib/supabase';
 import RazorpayWebView from '../../components/RazorpayWebView';
@@ -100,12 +100,14 @@ export default function MoneyScreen() {
       await updateUserProfile(user.phone, { wallet_balance: newBalance });
     }
 
-    Alert.alert(
-      'Wallet Loaded Successfully! 🎉',
+    showAppAlert(
+      'Wallet Loaded Successfully',
       `${formatCurrency(totalCredit)} has been credited to your wallet${
         bonusAmount > 0 ? ` (includes ${formatCurrency(bonusAmount)} bonus cashback)` : ''
       }.\n\nUpdated Balance: ${formatCurrency(newBalance)}`,
-      [{ text: 'Great!' }]
+      'success',
+      [{ text: 'Great!' }],
+      { icon: 'wallet-outline' }
     );
   };
 

@@ -72,7 +72,7 @@ export default function AddAddressScreen() {
       isDefault: true,
     });
 
-    showAppAlert('Address Saved 🎉', `Saved as ${addressType} address and selected for bookings.`, 'success', [
+    showAppAlert('Address Saved', `Saved as ${addressType} address and selected for bookings.`, 'success', [
       {
         text: 'OK',
         onPress: () => {

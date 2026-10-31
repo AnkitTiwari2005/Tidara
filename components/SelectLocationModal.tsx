@@ -96,7 +96,7 @@ export default function SelectLocationModal({ visible, onClose }: LocationModalP
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
               style={styles.keyboardContainer}
             >
-              <View style={[styles.container, { paddingBottom: bottomInsetPadding + 12 }]}>
+              <View style={styles.container}>
                 {/* Drag Handle Bar */}
                 <View style={styles.handle} />
 
@@ -333,25 +333,24 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.6)',
     justifyContent: 'flex-end',
+    paddingHorizontal: 16,
+    paddingBottom: 24,
   },
   keyboardContainer: {
     width: '100%',
   },
   container: {
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
+    borderRadius: 24,
     paddingHorizontal: 20,
     paddingTop: 12,
     gap: 14,
-    maxHeight: '88%',
+    maxHeight: '85%',
     shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: -6 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 16,
-    elevation: 24,
+    elevation: 20,
   },
   handle: {
     width: 40,

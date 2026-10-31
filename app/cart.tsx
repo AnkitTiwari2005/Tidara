@@ -108,7 +108,7 @@ export default function CartScreen() {
       }
       setLocalCouponApplied(true);
       applyCoupon('TIDARA20', discount);
-      showAppAlert('Coupon Applied! 🎉', `TIDARA20 applied successfully. You saved ₹${discount}!`, 'success');
+      showAppAlert('Coupon Applied', `TIDARA20 applied successfully. You saved ₹${discount}!`, 'success');
     } else {
       setLocalCouponApplied(false);
       removeCoupon();
@@ -420,9 +420,12 @@ export default function CartScreen() {
               <View>
                 <Text style={styles.grandLabel}>Grand Total</Text>
                 {totalSaved > 0 && (
-                  <Text style={styles.savedNotice}>
-                    🎉 You saved {formatCurrency(totalSaved)} on this booking!
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                    <Ionicons name="pricetag" size={12} color="#059669" />
+                    <Text style={styles.savedNotice}>
+                      You saved {formatCurrency(totalSaved)} on this booking!
+                    </Text>
+                  </View>
                 )}
               </View>
               <Text style={styles.grandValue}>{formatCurrency(grandTotal)}</Text>

@@ -322,7 +322,11 @@ export default function ProfileScreen() {
         )}
 
         {/* App Version */}
-        <Text style={styles.versionText}>Tidara v1.0.0 • Made with ❤️ in India</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, marginTop: 12, marginBottom: 24 }}>
+          <Text style={styles.versionText}>Tidara v1.0.0 • Made with</Text>
+          <Ionicons name="heart" size={12} color="#EF4444" />
+          <Text style={styles.versionText}>in India</Text>
+        </View>
       </ScrollView>
 
       {/* Edit Profile Modal */}

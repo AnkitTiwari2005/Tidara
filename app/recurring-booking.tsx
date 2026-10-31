@@ -83,7 +83,7 @@ export default function RecurringBookingScreen() {
     }
 
     showAppAlert(
-      'Recurring Schedule Set! 🎉',
+      'Recurring Schedule Set',
       `Your pro is scheduled every ${sortedDays.join(', ')} at ${selectedSlot}. You can pause or cancel anytime from the Bookings tab.`,
       'success',
       [
@@ -91,7 +91,8 @@ export default function RecurringBookingScreen() {
           text: 'Review in Cart',
           onPress: () => router.push('/cart'),
         },
-      ]
+      ],
+      { icon: 'calendar-outline' }
     );
   };
 

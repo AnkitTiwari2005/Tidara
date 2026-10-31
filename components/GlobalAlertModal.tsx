@@ -45,6 +45,15 @@ export default function GlobalAlertModal() {
   const type = alertConfig.type || 'info';
 
   const getIconProps = () => {
+    if (alertConfig.icon) {
+      return {
+        name: alertConfig.icon,
+        color: type === 'error' ? '#DC2626' : type === 'warning' ? '#D97706' : Colors.primary,
+        bg: type === 'error' ? '#FEE2E2' : type === 'warning' ? '#FEF3C7' : '#ECFDF5',
+        border: type === 'error' ? '#FECACA' : type === 'warning' ? '#FDE68A' : '#A7F3D0',
+      };
+    }
+
     switch (type) {
       case 'success':
         return {
@@ -69,9 +78,9 @@ export default function GlobalAlertModal() {
         };
       default:
         return {
-          name: 'sparkles' as const,
+          name: 'information-circle' as const,
           color: Colors.primary,
-          bg: '#E8FBF4',
+          bg: '#ECFDF5',
           border: '#A7F3D0',
         };
     }
@@ -95,6 +104,7 @@ export default function GlobalAlertModal() {
       transparent
       visible={!!alertConfig}
       animationType="none"
+      statusBarTranslucent
       onRequestClose={hideAlert}
     >
       <View style={styles.overlay}>
@@ -119,14 +129,32 @@ export default function GlobalAlertModal() {
               { backgroundColor: iconProps.bg, borderColor: iconProps.border },
             ]}
           >
-            <Ionicons name={iconProps.name} size={32} color={iconProps.color} />
+            <Ionicons name={iconProps.name as any} size={30} color={iconProps.color} />
           </View>
 
           {/* Title */}
           <Text style={styles.title}>{alertConfig.title}</Text>
 
-          {/* Message */}
-          <Text style={styles.message}>{alertConfig.message}</Text>
+          {/* Structured Details with SVGs/Vector Icons (0 Emojis) */}
+          {alertConfig.details && alertConfig.details.length > 0 ? (
+            <View style={styles.detailsContainer}>
+              {alertConfig.details.map((item, idx) => (
+                <View key={idx} style={styles.detailRow}>
+                  <View style={styles.detailIconCircle}>
+                    <Ionicons name={item.iconName as any} size={15} color={Colors.primary} />
+                  </View>
+                  <View style={styles.detailTextWrap}>
+                    <Text style={styles.detailLabel}>{item.label}</Text>
+                    <Text style={styles.detailValue} numberOfLines={2}>
+                      {item.value}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : alertConfig.message ? (
+            <Text style={styles.message}>{alertConfig.message}</Text>
+          ) : null}
 
           {/* Buttons Row / Stack */}
           <View style={styles.buttonContainer}>
@@ -175,9 +203,9 @@ const styles = StyleSheet.create({
     width: Math.min(width - 48, 360),
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
-    paddingTop: 28,
-    paddingBottom: 22,
-    paddingHorizontal: 22,
+    paddingTop: 24,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
     alignItems: 'center',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 12 },
@@ -186,20 +214,20 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
   iconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   title: {
     fontSize: 18,
     fontWeight: '800',
     color: '#0F172A',
     textAlign: 'center',
-    marginTop: 10,
+    marginTop: 8,
     fontFamily: Fonts.bold,
   },
   message: {
@@ -211,11 +239,50 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     paddingHorizontal: 6,
   },
+  detailsContainer: {
+    width: '100%',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 12,
+    marginTop: 14,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  detailIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#ECFDF5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailTextWrap: {
+    flex: 1,
+  },
+  detailLabel: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  detailValue: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginTop: 1,
+  },
   buttonContainer: {
     flexDirection: 'row',
     gap: 10,
     width: '100%',
-    marginTop: 22,
+    marginTop: 18,
   },
   defaultBtn: {
     width: '100%',

@@ -42,7 +42,7 @@ export default function SplashScreen() {
 
     const timer = setTimeout(() => {
       if (isAuthenticated) {
-        // ✅ Already logged in — go straight to home
+        // Already logged in — go straight to home
         router.replace('/(tabs)');
       } else {
         // Not logged in — go to login

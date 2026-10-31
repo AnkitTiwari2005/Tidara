@@ -72,9 +72,12 @@ export default function TidaraPassModal({ visible, onClose, onBook }: TidaraPass
                 <Text style={styles.dealPrice}> {formatCurrency(129)}</Text>
               </View>
 
-              <Text style={styles.savingsTag}>
-                ⚡ Save ₹70 with VIP member pricing • Valid on all cleaning & kitchen prep
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 6, marginVertical: 4 }}>
+                <Ionicons name="flash" size={13} color="#D97706" />
+                <Text style={styles.savingsTag}>
+                  Save ₹70 with VIP member pricing • Valid on all cleaning & kitchen prep
+                </Text>
+              </View>
 
               {/* Features List */}
               <View style={styles.featuresList}>

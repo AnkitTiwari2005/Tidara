@@ -164,7 +164,7 @@ export default function PaymentScreen() {
       await saveBookingToDB('Cash on Delivery');
       clearCart();
       showAppAlert(
-        'Booking Confirmed! 🎉',
+        'Booking Confirmed',
         `Your expert is dispatched.\nPay ${formatCurrency(
           total
         )} in cash or UPI once the work is completed to your satisfaction.`,
@@ -205,7 +205,7 @@ export default function PaymentScreen() {
       await saveBookingToDB('Tidara Wallet');
       clearCart();
       showAppAlert(
-        'Paid from Tidara Wallet! 🎉',
+        'Paid from Tidara Wallet',
         `Payment of ${formatCurrency(total)} was deducted.\nRemaining balance: ${formatCurrency(
           remaining
         )}`,
@@ -244,9 +244,10 @@ export default function PaymentScreen() {
       });
       setRazorpayHtml(html);
     } catch (err: any) {
-      Alert.alert(
+      showAppAlert(
         'Gateway Error',
-        err.message ?? 'Could not initialize online checkout.'
+        err.message ?? 'Could not initialize online checkout.',
+        'error'
       );
     } finally {
       setLoading(false);
@@ -268,7 +269,7 @@ export default function PaymentScreen() {
     await saveBookingToDB('Razorpay Online', data.paymentId, data.orderId);
     clearCart();
     showAppAlert(
-      'Payment Successful! 🎉',
+      'Payment Successful',
       `Payment of ${formatCurrency(total)} confirmed. Your certified pro is assigned.`,
       'success',
       [{ text: 'View Bookings', onPress: () => router.replace('/(tabs)/bookings') }]

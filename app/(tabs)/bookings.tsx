@@ -78,14 +78,23 @@ export default function BookingsScreen() {
   const handleBookingDetails = (booking: Booking) => {
     showAppAlert(
       booking.service_name,
-      `📅 Slot: ${booking.scheduled_at || 'Today'}\n📍 Address: ${booking.address}\n💳 Amount: ${formatCurrency(booking.price)}\n📋 Status: ${booking.status.toUpperCase()}`,
+      '',
       'info',
       booking.status === 'upcoming'
         ? [
             { text: 'Cancel Visit', style: 'destructive', onPress: () => handleCancelBooking(booking) },
             { text: 'OK' },
           ]
-        : [{ text: 'OK' }]
+        : [{ text: 'OK' }],
+      {
+        icon: 'receipt-outline',
+        details: [
+          { iconName: 'calendar-outline', label: 'Slot', value: booking.scheduled_at || 'Today (Express 15-Min)' },
+          { iconName: 'location-outline', label: 'Address', value: booking.address },
+          { iconName: 'wallet-outline', label: 'Amount', value: formatCurrency(booking.price) },
+          { iconName: 'checkmark-circle-outline', label: 'Status', value: booking.status.toUpperCase() },
+        ],
+      }
     );
   };
 
@@ -241,9 +250,12 @@ export default function BookingsScreen() {
                     <Text style={styles.bookingServiceName} numberOfLines={1}>
                       {booking.service_name}
                     </Text>
-                    <Text style={styles.bookingDate}>
-                      📅 {booking.scheduled_at || 'Today'}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }}>
+                      <Ionicons name="calendar-outline" size={13} color={Colors.textMuted} />
+                      <Text style={styles.bookingDate}>
+                        {booking.scheduled_at || 'Today'}
+                      </Text>
+                    </View>
                   </View>
 
                   {/* Status Pill */}

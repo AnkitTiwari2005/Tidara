@@ -145,9 +145,10 @@ function RealMapView({
           attributionControl: false 
         }).setView([${lat}, ${lng}], 16);
 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        var tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+        L.tileLayer(tileUrl, {
           maxZoom: 19,
-          subdomains: 'abcd'
+          attribution: ''
         }).addTo(map);
 
         map.on('movestart', function() {

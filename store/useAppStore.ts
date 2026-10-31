@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import * as SecureStore from 'expo-secure-store';
 import { getUserByPhone, upsertUserProfile, normalizePhone } from '../lib/supabase';
+import { Ionicons } from '@expo/vector-icons';
 
 // ─── SecureStore Adapter ──────────────────────────────────────────────────────
 const secureStoreAdapter = {
@@ -65,11 +66,19 @@ export interface AlertButton {
   onPress?: () => void;
 }
 
+export interface AlertDetailItem {
+  iconName: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+}
+
 export interface AlertConfig {
   title: string;
-  message: string;
+  message?: string;
   type?: 'success' | 'warning' | 'error' | 'info';
+  icon?: keyof typeof Ionicons.glyphMap;
   buttons?: AlertButton[];
+  details?: AlertDetailItem[];
 }
 
 export interface CartItem {
@@ -374,9 +383,20 @@ export const useAppStore = create<AppState>()(
 
 export function showAppAlert(
   title: string,
-  message: string,
+  message?: string,
   type: 'success' | 'warning' | 'error' | 'info' = 'info',
-  buttons?: AlertButton[]
+  buttons?: AlertButton[],
+  options?: {
+    icon?: keyof typeof Ionicons.glyphMap;
+    details?: AlertDetailItem[];
+  }
 ) {
-  useAppStore.getState().showAlert({ title, message, type, buttons });
+  useAppStore.getState().showAlert({
+    title,
+    message: message || '',
+    type,
+    buttons,
+    icon: options?.icon,
+    details: options?.details,
+  });
 }
