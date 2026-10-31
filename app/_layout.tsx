@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
 import { useAppStore } from '../store/useAppStore';
+import GlobalAlertModal from '../components/GlobalAlertModal';
 
 // Prevent the splash screen from auto-hiding before store hydration finishes.
 SplashScreen.preventAutoHideAsync();
@@ -53,6 +54,7 @@ export default function RootLayout() {
         <Stack.Screen name="recurring-booking" />
         <Stack.Screen name="service/[id]" />
       </Stack>
+      <GlobalAlertModal />
     </GestureHandlerRootView>
   );
 }

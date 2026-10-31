@@ -59,6 +59,19 @@ export interface UserAddress {
   isDefault?: boolean;
 }
 
+export interface AlertButton {
+  text: string;
+  style?: 'default' | 'cancel' | 'destructive';
+  onPress?: () => void;
+}
+
+export interface AlertConfig {
+  title: string;
+  message: string;
+  type?: 'success' | 'warning' | 'error' | 'info';
+  buttons?: AlertButton[];
+}
+
 export interface CartItem {
   serviceId: string;
   quantity: number;
@@ -84,6 +97,11 @@ interface AppState {
   couponApplied: boolean;
   couponCode: string | null;
   discountAmount: number;
+
+  // ── Global Custom Alert / Toast ───────────────────────────────────────────
+  alertConfig: AlertConfig | null;
+  showAlert: (config: AlertConfig) => void;
+  hideAlert: () => void;
 
   // ── Hydration flag ───────────────────────────────────────────────────────
   _hasHydrated: boolean;
@@ -143,6 +161,9 @@ export const useAppStore = create<AppState>()(
       couponApplied: false,
       couponCode: null,
       discountAmount: 0,
+      alertConfig: null,
+      showAlert: (config) => set({ alertConfig: config }),
+      hideAlert: () => set({ alertConfig: null }),
       _hasHydrated: false,
 
       setHasHydrated: (value) => set({ _hasHydrated: value }),
@@ -350,3 +371,12 @@ export const useAppStore = create<AppState>()(
     }
   )
 );
+
+export function showAppAlert(
+  title: string,
+  message: string,
+  type: 'success' | 'warning' | 'error' | 'info' = 'info',
+  buttons?: AlertButton[]
+) {
+  useAppStore.getState().showAlert({ title, message, type, buttons });
+}

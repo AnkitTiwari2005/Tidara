@@ -15,7 +15,7 @@ import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore, showAppAlert } from '../store/useAppStore';
 
 type AddressType = 'Home' | 'Work' | 'Other';
 
@@ -41,15 +41,15 @@ export default function AddAddressScreen() {
 
   const handleSave = () => {
     if (!flat.trim()) {
-      Alert.alert('Missing Details', 'Please provide your Flat / House / Floor number.');
+      showAppAlert('Missing Details', 'Please provide your Flat / House / Floor number.', 'warning');
       return;
     }
     if (!area.trim()) {
-      Alert.alert('Missing Details', 'Please provide your Sector, Colony or Street name.');
+      showAppAlert('Missing Details', 'Please provide your Sector, Colony or Street name.', 'warning');
       return;
     }
     if (pincode.trim() && !/^\d{6}$/.test(pincode.trim())) {
-      Alert.alert('Invalid PIN Code', 'Please enter a valid 6-digit Indian Postal PIN Code.');
+      showAppAlert('Invalid PIN Code', 'Please enter a valid 6-digit Indian Postal PIN Code.', 'warning');
       return;
     }
 
@@ -72,7 +72,7 @@ export default function AddAddressScreen() {
       isDefault: true,
     });
 
-    Alert.alert('Address Saved 🎉', `Saved as ${addressType} address and selected for bookings.`, [
+    showAppAlert('Address Saved 🎉', `Saved as ${addressType} address and selected for bookings.`, 'success', [
       {
         text: 'OK',
         onPress: () => {

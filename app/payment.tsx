@@ -14,7 +14,7 @@ import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, formatCurrency } from '../constants/colors';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore, showAppAlert } from '../store/useAppStore';
 import { createRazorpayOrder, getRazorpayCheckoutHTML } from '../lib/razorpay';
 import { createBooking, updateUserProfile, normalizePhone } from '../lib/supabase';
 import RazorpayWebView from '../components/RazorpayWebView';
@@ -163,11 +163,12 @@ export default function PaymentScreen() {
     try {
       await saveBookingToDB('Cash on Delivery');
       clearCart();
-      Alert.alert(
+      showAppAlert(
         'Booking Confirmed! 🎉',
         `Your expert is dispatched.\nPay ${formatCurrency(
           total
         )} in cash or UPI once the work is completed to your satisfaction.`,
+        'success',
         [
           {
             text: 'View Booking',
@@ -176,7 +177,7 @@ export default function PaymentScreen() {
         ]
       );
     } catch {
-      Alert.alert('Error', 'Could not confirm booking. Please try again.');
+      showAppAlert('Error', 'Could not confirm booking. Please try again.', 'error');
     } finally {
       setLoading(false);
     }
@@ -185,11 +186,12 @@ export default function PaymentScreen() {
   /* Wallet Payment Flow */
   const handleWalletPayment = async () => {
     if (walletBalance < total) {
-      Alert.alert(
+      showAppAlert(
         'Insufficient Wallet Balance',
         `Your balance is ${formatCurrency(
           walletBalance
-        )}. Please top up or choose another payment method.`
+        )}. Please top up or choose another payment method.`,
+        'warning'
       );
       return;
     }
@@ -202,11 +204,12 @@ export default function PaymentScreen() {
       }
       await saveBookingToDB('Tidara Wallet');
       clearCart();
-      Alert.alert(
+      showAppAlert(
         'Paid from Tidara Wallet! 🎉',
         `Payment of ${formatCurrency(total)} was deducted.\nRemaining balance: ${formatCurrency(
           remaining
         )}`,
+        'success',
         [
           {
             text: 'View Booking',
@@ -215,7 +218,7 @@ export default function PaymentScreen() {
         ]
       );
     } catch {
-      Alert.alert('Error', 'Wallet transaction failed.');
+      showAppAlert('Error', 'Wallet transaction failed.', 'error');
     } finally {
       setLoading(false);
     }
@@ -264,9 +267,10 @@ export default function PaymentScreen() {
     setRazorpayHtml(null);
     await saveBookingToDB('Razorpay Online', data.paymentId, data.orderId);
     clearCart();
-    Alert.alert(
+    showAppAlert(
       'Payment Successful! 🎉',
       `Payment of ${formatCurrency(total)} confirmed. Your certified pro is assigned.`,
+      'success',
       [{ text: 'View Bookings', onPress: () => router.replace('/(tabs)/bookings') }]
     );
   };
@@ -274,7 +278,7 @@ export default function PaymentScreen() {
   const onPaymentFailure = (error: string | null, cancelled?: boolean) => {
     setRazorpayHtml(null);
     if (!cancelled) {
-      Alert.alert('Payment Notice', error ?? 'Transaction was not completed.');
+      showAppAlert('Payment Notice', error ?? 'Transaction was not completed.', 'warning');
     }
   };
 

@@ -14,7 +14,7 @@ import { StatusBar } from 'expo-status-bar';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, formatCurrency } from '../../constants/colors';
-import { useAppStore } from '../../store/useAppStore';
+import { useAppStore, showAppAlert } from '../../store/useAppStore';
 import { getUserBookings, cancelBooking, Booking } from '../../lib/supabase';
 
 type TabType = 'upcoming' | 'previous';
@@ -55,9 +55,10 @@ export default function BookingsScreen() {
 
   const handleCancelBooking = (booking: Booking) => {
     if (!booking.id) return;
-    Alert.alert(
+    showAppAlert(
       'Cancel Booking?',
       `Are you sure you want to cancel "${booking.service_name}"? Free cancellation is active.`,
+      'warning',
       [
         { text: 'Keep Booking', style: 'cancel' },
         {
@@ -67,7 +68,7 @@ export default function BookingsScreen() {
             setLoading(true);
             await cancelBooking(booking.id!);
             await fetchBookings();
-            Alert.alert('Booking Cancelled', 'Your booking was cancelled. Any prepaid amount will be credited back.');
+            showAppAlert('Booking Cancelled', 'Your booking was cancelled. Any prepaid amount will be credited back.', 'info');
           },
         },
       ]
@@ -75,9 +76,10 @@ export default function BookingsScreen() {
   };
 
   const handleBookingDetails = (booking: Booking) => {
-    Alert.alert(
+    showAppAlert(
       booking.service_name,
       `📅 Slot: ${booking.scheduled_at || 'Today'}\n📍 Address: ${booking.address}\n💳 Amount: ${formatCurrency(booking.price)}\n📋 Status: ${booking.status.toUpperCase()}`,
+      'info',
       booking.status === 'upcoming'
         ? [
             { text: 'Cancel Visit', style: 'destructive', onPress: () => handleCancelBooking(booking) },

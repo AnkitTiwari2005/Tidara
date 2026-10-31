@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,8 +13,9 @@ import { StatusBar } from 'expo-status-bar';
 import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { WebView } from 'react-native-webview';
 import { Colors } from '../../constants/colors';
-import { useAppStore } from '../../store/useAppStore';
+import { useAppStore, showAppAlert } from '../../store/useAppStore';
 
 interface ServiceableCity {
   name: string;
@@ -38,126 +39,177 @@ const SERVICEABLE_CITIES: ServiceableCity[] = [
 
 const POPULAR_CITIES = ['Gurugram', 'Delhi', 'Mumbai', 'Bangalore', 'Noida'];
 
-function MapIllustration({ city }: { city: string }) {
+function RealMapView({
+  lat,
+  lng,
+  city,
+  onLocationChange,
+}: {
+  lat: number;
+  lng: number;
+  city: string;
+  onLocationChange: (newLat: number, newLng: number) => void;
+}) {
+  const webViewRef = useRef<any>(null);
+  const WebViewComponent = WebView as any;
+
+  const mapHtml = useMemo(
+    () => `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+      <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+      <style>
+        * { box-sizing: border-box; }
+        body, html, #map { margin: 0; padding: 0; width: 100%; height: 100%; background: #F1F5F9; overflow: hidden; }
+        
+        .center-pin-container {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -100%);
+          z-index: 1000;
+          pointer-events: none;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          transition: transform 0.15s ease-out;
+        }
+        .pin-head {
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          background: #0B5335;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 8px 18px rgba(11, 83, 53, 0.35);
+          border: 3.5px solid #FFFFFF;
+        }
+        .pin-point {
+          width: 0;
+          height: 0;
+          border-left: 9px solid transparent;
+          border-right: 9px solid transparent;
+          border-top: 11px solid #0B5335;
+          margin-top: -3px;
+        }
+        .pin-shadow {
+          width: 14px;
+          height: 5px;
+          background: rgba(15, 23, 42, 0.25);
+          border-radius: 50%;
+          margin-top: 2px;
+        }
+        .pin-label {
+          background: #063D26;
+          color: #FFFFFF;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+          font-size: 11.5px;
+          font-weight: 800;
+          padding: 4px 10px;
+          border-radius: 12px;
+          white-space: nowrap;
+          margin-bottom: 4px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+          letter-spacing: 0.3px;
+        }
+        body.is-dragging .center-pin-container {
+          transform: translate(-50%, -115%);
+        }
+        body.is-dragging .pin-shadow {
+          transform: scale(0.6);
+          opacity: 0.15;
+        }
+      </style>
+    </head>
+    <body>
+      <div id="map"></div>
+      <div class="center-pin-container">
+        <div class="pin-label" id="cityLabel">${city || 'Your Location'}</div>
+        <div class="pin-head">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+            <circle cx="12" cy="10" r="3"></circle>
+          </svg>
+        </div>
+        <div class="pin-point"></div>
+        <div class="pin-shadow"></div>
+      </div>
+      <script>
+        var map = L.map('map', { 
+          zoomControl: false,
+          attributionControl: false 
+        }).setView([${lat}, ${lng}], 16);
+
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+          maxZoom: 19,
+          subdomains: 'abcd'
+        }).addTo(map);
+
+        map.on('movestart', function() {
+          document.body.classList.add('is-dragging');
+        });
+
+        map.on('moveend', function() {
+          document.body.classList.remove('is-dragging');
+          var center = map.getCenter();
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'location_changed',
+              lat: center.lat,
+              lng: center.lng
+            }));
+          }
+        });
+
+        window.updateCenter = function(newLat, newLng, newCity) {
+          map.setView([newLat, newLng], 16, { animate: true });
+          var el = document.getElementById('cityLabel');
+          if (el && newCity) el.innerText = newCity;
+        };
+      </script>
+    </body>
+    </html>
+  `,
+    []
+  );
+
+  useEffect(() => {
+    if (webViewRef.current && lat && lng) {
+      webViewRef.current.injectJavaScript(
+        `if (window.updateCenter) { window.updateCenter(${lat}, ${lng}, "${city || ''}"); } true;`
+      );
+    }
+  }, [lat, lng, city]);
+
+  const handleMessage = (event: any) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === 'location_changed') {
+        onLocationChange(data.lat, data.lng);
+      }
+    } catch {}
+  };
+
   return (
-    <View style={mapStyles.container}>
-      {/* Background grid */}
-      <View style={mapStyles.grid}>
-        {[0, 1, 2, 3, 4].map((row) => (
-          <View key={row} style={mapStyles.gridRow}>
-            {[0, 1, 2, 3, 4].map((col) => (
-              <View
-                key={col}
-                style={[
-                  mapStyles.gridCell,
-                  (row + col) % 3 === 0 && mapStyles.gridCellDark,
-                  (row === 2 || col === 2) && mapStyles.gridCellRoad,
-                ]}
-              />
-            ))}
-          </View>
-        ))}
-      </View>
-
-      <View style={mapStyles.roadH} />
-      <View style={mapStyles.roadV} />
-
-      {/* Location Pin */}
-      <View style={mapStyles.markerWrapper}>
-        <View style={mapStyles.markerPulse} />
-        <View style={mapStyles.markerCircle}>
-          <Ionicons name="location" size={26} color={Colors.primary} />
-        </View>
-        {city ? (
-          <View style={mapStyles.markerBubble}>
-            <Text style={mapStyles.markerBubbleText}>{city}</Text>
-          </View>
-        ) : null}
-      </View>
-
-      {/* Decorative Buildings */}
-      <View style={[mapStyles.building, { top: 30, left: 30, width: 44, height: 30 }]} />
-      <View style={[mapStyles.building, { top: 30, right: 40, width: 55, height: 38 }]} />
-      <View style={[mapStyles.building, { bottom: 40, left: 24, width: 52, height: 34 }]} />
-      <View style={[mapStyles.building, { bottom: 40, right: 30, width: 48, height: 26 }]} />
+    <View style={StyleSheet.absoluteFill}>
+      <WebViewComponent
+        ref={webViewRef}
+        originWhitelist={['*']}
+        source={{ html: mapHtml }}
+        style={{ flex: 1, backgroundColor: '#E8F5EE' }}
+        scrollEnabled={false}
+        javaScriptEnabled={true}
+        domStorageEnabled={true}
+        onMessage={handleMessage}
+      />
     </View>
   );
 }
-
-const mapStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#E8F5EE',
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  grid: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-  gridRow: { flex: 1, flexDirection: 'row' },
-  gridCell: { flex: 1, borderWidth: 0.5, borderColor: 'rgba(11,83,53,0.08)', backgroundColor: '#E8F5EE' },
-  gridCellDark: { backgroundColor: '#D1FAE5' },
-  gridCellRoad: { backgroundColor: '#F8FAFC' },
-  roadH: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '50%',
-    height: 20,
-    backgroundColor: '#F1F5F9',
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  roadV: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: '50%',
-    width: 20,
-    backgroundColor: '#F1F5F9',
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  building: {
-    position: 'absolute',
-    backgroundColor: '#A7F3D0',
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#6EE7B7',
-  },
-  markerWrapper: { alignItems: 'center', zIndex: 10 },
-  markerPulse: {
-    position: 'absolute',
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(11,83,53,0.15)',
-    top: -10,
-  },
-  markerCircle: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  markerBubble: {
-    marginTop: 6,
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 14,
-  },
-  markerBubbleText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
-});
 
 export default function ConfirmLocationScreen() {
   const { location: storedLocation, setLocation } = useAppStore();
@@ -229,6 +281,31 @@ export default function ConfirmLocationScreen() {
     setAddress(`${city.name}, ${city.area}, India`);
     setCoords({ lat: city.lat, lng: city.lng });
     setSearch('');
+  };
+
+  const handleMapLocationChange = async (newLat: number, newLng: number) => {
+    setCoords({ lat: newLat, lng: newLng });
+    try {
+      const results = await Location.reverseGeocodeAsync({
+        latitude: newLat,
+        longitude: newLng,
+      });
+      if (results && results.length > 0) {
+        const r = results[0];
+        const parts = [
+          r.name,
+          r.street,
+          r.district,
+          r.subregion,
+          r.city,
+          r.region,
+        ].filter(Boolean);
+        setAddress(parts.join(', '));
+        if (r.city || r.subregion || r.district) {
+          setCityName(r.city ?? r.subregion ?? r.district ?? '');
+        }
+      }
+    } catch {}
   };
 
   const handleConfirm = () => {
@@ -313,7 +390,7 @@ export default function ConfirmLocationScreen() {
         </View>
       )}
 
-      {/* Map Illustration Area */}
+      {/* Real Live Map */}
       <View style={styles.mapContainer}>
         {loading ? (
           <View style={styles.mapLoading}>
@@ -321,7 +398,12 @@ export default function ConfirmLocationScreen() {
             <Text style={styles.mapLoadingText}>Detecting your current location...</Text>
           </View>
         ) : (
-          <MapIllustration city={cityName} />
+          <RealMapView
+            lat={coords.lat}
+            lng={coords.lng}
+            city={cityName}
+            onLocationChange={handleMapLocationChange}
+          />
         )}
 
         {/* GPS Button */}

@@ -12,7 +12,7 @@ import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore, showAppAlert } from '../store/useAppStore';
 import { SERVICES } from '../constants/services';
 
 const TIME_SLOTS = [
@@ -61,11 +61,11 @@ export default function RecurringBookingScreen() {
 
   const handleConfirm = () => {
     if (selectedDays.length === 0) {
-      Alert.alert('Select Days', 'Please select at least one day for your recurring visits.');
+      showAppAlert('Select Days', 'Please select at least one day for your recurring visits.', 'warning');
       return;
     }
     if (!selectedSlot) {
-      Alert.alert('Select Slot', 'Please select an arrival time slot for your expert.');
+      showAppAlert('Select Slot', 'Please select an arrival time slot for your expert.', 'warning');
       return;
     }
 
@@ -82,9 +82,10 @@ export default function RecurringBookingScreen() {
       addToCart(svc.id, 60, svc.price);
     }
 
-    Alert.alert(
+    showAppAlert(
       'Recurring Schedule Set! 🎉',
       `Your pro is scheduled every ${sortedDays.join(', ')} at ${selectedSlot}. You can pause or cancel anytime from the Bookings tab.`,
+      'success',
       [
         {
           text: 'Review in Cart',

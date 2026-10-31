@@ -14,7 +14,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, formatCurrency } from '../constants/colors';
 import { SERVICES, FESTIVE_PACKS, BrandImages } from '../constants/services';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore, showAppAlert } from '../store/useAppStore';
 
 type CartTab = 'Instant' | 'Scheduled' | 'Recurring';
 
@@ -103,12 +103,12 @@ export default function CartScreen() {
   const handleApplyCoupon = () => {
     if (!couponApplied) {
       if (itemTotal < 99) {
-        Alert.alert('Coupon Condition', 'Minimum item total of ₹99 required for TIDARA20.');
+        showAppAlert('Coupon Condition', 'Minimum item total of ₹99 required for TIDARA20.', 'warning');
         return;
       }
       setLocalCouponApplied(true);
       applyCoupon('TIDARA20', discount);
-      Alert.alert('Coupon TIDARA20 Applied! 🎉', `You saved ₹${discount} on this booking.`);
+      showAppAlert('Coupon Applied! 🎉', `TIDARA20 applied successfully. You saved ₹${discount}!`, 'success');
     } else {
       setLocalCouponApplied(false);
       removeCoupon();
@@ -116,7 +116,7 @@ export default function CartScreen() {
   };
 
   const handleClearCart = () => {
-    Alert.alert('Clear Cart?', 'Are you sure you want to remove all items from your booking?', [
+    showAppAlert('Clear Cart?', 'Are you sure you want to remove all items from your booking?', 'warning', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Clear', style: 'destructive', onPress: clearCart },
     ]);
@@ -124,14 +124,15 @@ export default function CartScreen() {
 
   const handleProceed = () => {
     if (cartServices.length === 0) {
-      Alert.alert('Your Cart is Empty', 'Please add at least one service before proceeding to payment.');
+      showAppAlert('Your Cart is Empty', 'Please add at least one service before proceeding to payment.', 'warning');
       return;
     }
 
     if (!user) {
-      Alert.alert(
+      showAppAlert(
         'Login Required',
         'Please verify your mobile number to complete your booking dispatch.',
+        'info',
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Sign In', onPress: () => router.push('/(auth)/login') },
