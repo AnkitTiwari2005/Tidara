@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -234,7 +234,7 @@ export default function HomeScreen() {
   const [passModalVisible, setPassModalVisible] = useState(false);
   const [locationModalVisible, setLocationModalVisible] = useState(false);
 
-  const { location, cartItems, user } = useAppStore();
+  const { location, cartItems, user, addToCart } = useAppStore();
   const totalCartCount = useAppStore((state) => state.getCartCount());
   const currentCity = location?.city || 'Gurugram';
   const currentAddress = location?.address || 'Sector 48, Sohna Road';
@@ -598,7 +598,8 @@ export default function HomeScreen() {
         onClose={() => setPassModalVisible(false)}
         onBook={() => {
           setPassModalVisible(false);
-          router.push('/recurring-booking' as any);
+          addToCart('tidara_pass_3', 60, 129);
+          router.push('/cart');
         }}
       />
 

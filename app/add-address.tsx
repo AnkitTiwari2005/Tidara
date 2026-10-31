@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -26,36 +26,55 @@ const ADDRESS_TYPES: { key: AddressType; icon: keyof typeof Ionicons.glyphMap; l
 ];
 
 export default function AddAddressScreen() {
+  const { location, addSavedAddress } = useAppStore();
+
+  const currentCity = location?.city || 'Gurugram';
+  const defaultArea = location?.address && !location.address.startsWith('Flat')
+    ? location.address
+    : 'Sector 48, Sohna Road';
+
   const [flat, setFlat] = useState('');
+  const [area, setArea] = useState(defaultArea);
+  const [pincode, setPincode] = useState('');
   const [landmark, setLandmark] = useState('');
   const [addressType, setAddressType] = useState<AddressType>('Home');
 
-  const { location, setLocation } = useAppStore();
-
   const handleSave = () => {
     if (!flat.trim()) {
-      Alert.alert('Incomplete Address', 'Please provide your Flat / House number.');
+      Alert.alert('Missing Details', 'Please provide your Flat / House / Floor number.');
       return;
     }
-    const currentCity = location?.city || 'Gurugram';
-    
-    // Clean base area without recursive flat prefixes
-    let baseArea = location?.address || currentCity;
-    // If base area contains previously entered comma separated flat prefix, use it cleanly
-    const fullFormatted = `${flat.trim()}${landmark.trim() ? `, Near ${landmark.trim()}` : ''}, ${baseArea}`;
+    if (!area.trim()) {
+      Alert.alert('Missing Details', 'Please provide your Sector, Colony or Street name.');
+      return;
+    }
+    if (pincode.trim() && !/^\d{6}$/.test(pincode.trim())) {
+      Alert.alert('Invalid PIN Code', 'Please enter a valid 6-digit Indian Postal PIN Code.');
+      return;
+    }
 
-    setLocation({
+    const cleanFlat = flat.trim();
+    const cleanArea = area.trim();
+    const cleanLandmark = landmark.trim() ? `, Near ${landmark.trim()}` : '';
+    const cleanPincode = pincode.trim() ? ` - ${pincode.trim()}` : '';
+    const fullFormatted = `${cleanFlat}${cleanLandmark}, ${cleanArea}, ${currentCity}${cleanPincode}`;
+
+    addSavedAddress({
+      flat: cleanFlat,
+      area: cleanArea,
+      landmark: landmark.trim() || undefined,
+      pincode: pincode.trim() || undefined,
       city: currentCity,
-      address: fullFormatted,
+      fullAddress: fullFormatted,
+      type: addressType,
       lat: location?.lat || 28.4595,
       lng: location?.lng || 77.0266,
-      isServiceable: true,
-      type: addressType,
+      isDefault: true,
     });
 
-    Alert.alert('Address Saved 🎉', `Saved as ${addressType} address.`, [
+    Alert.alert('Address Saved 🎉', `Saved as ${addressType} address and selected for bookings.`, [
       {
-        text: 'Continue',
+        text: 'OK',
         onPress: () => {
           if (router.canGoBack()) {
             router.back();
@@ -81,7 +100,7 @@ export default function AddAddressScreen() {
         >
           <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Add Address Details</Text>
+        <Text style={styles.headerTitle}>Add Complete Address</Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -95,22 +114,22 @@ export default function AddAddressScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* City Info Card */}
+          {/* City / Service Zone Card */}
           <View style={styles.cityCard}>
             <View style={styles.cityIconBox}>
               <Ionicons name="location" size={18} color={Colors.primary} />
             </View>
             <View style={styles.cityInfo}>
-              <Text style={styles.cityName}>{location?.city || 'Selected Location'}</Text>
+              <Text style={styles.cityName}>Service Hub: {currentCity}</Text>
               <Text style={styles.cityAddress} numberOfLines={2}>
-                {location?.address || 'Area confirmed via location selection'}
+                Pros are dispatched within 15 minutes in this locality.
               </Text>
             </View>
           </View>
 
           {/* Address Form Card */}
           <View style={styles.formCard}>
-            <Text style={styles.sectionTitle}>House / Flat Details</Text>
+            <Text style={styles.sectionTitle}>Doorstep Details</Text>
 
             {/* Flat / House # */}
             <View style={styles.fieldGroup}>
@@ -128,23 +147,55 @@ export default function AddAddressScreen() {
               />
             </View>
 
-            {/* Landmark */}
+            {/* Street / Colony / Sector */}
             <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Nearby Landmark (Optional)</Text>
+              <Text style={styles.fieldLabel}>
+                Sector / Colony / Street <Text style={styles.required}>*</Text>
+              </Text>
               <TextInput
                 style={styles.input}
-                placeholder="e.g. Near Mother Dairy / Community Gate"
+                placeholder="e.g. Sector 48, Sohna Road"
                 placeholderTextColor={Colors.textMuted}
-                value={landmark}
-                onChangeText={setLandmark}
+                value={area}
+                onChangeText={setArea}
                 autoCapitalize="words"
-                returnKeyType="done"
+                returnKeyType="next"
               />
+            </View>
+
+            {/* Landmark & PIN Code Row */}
+            <View style={styles.row}>
+              <View style={[styles.fieldGroup, { flex: 1 }]}>
+                <Text style={styles.fieldLabel}>Landmark (Optional)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g. Near Mother Dairy"
+                  placeholderTextColor={Colors.textMuted}
+                  value={landmark}
+                  onChangeText={setLandmark}
+                  autoCapitalize="words"
+                  returnKeyType="next"
+                />
+              </View>
+
+              <View style={[styles.fieldGroup, { width: 110 }]}>
+                <Text style={styles.fieldLabel}>PIN Code</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g. 122018"
+                  placeholderTextColor={Colors.textMuted}
+                  value={pincode}
+                  onChangeText={setPincode}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  returnKeyType="done"
+                />
+              </View>
             </View>
 
             {/* Address Tag */}
             <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Save As</Text>
+              <Text style={styles.fieldLabel}>Save Address As</Text>
               <View style={styles.tagRow}>
                 {ADDRESS_TYPES.map((type) => {
                   const active = addressType === type.key;
@@ -156,6 +207,7 @@ export default function AddAddressScreen() {
                       activeOpacity={0.8}
                       accessibilityRole="radio"
                       accessibilityState={{ selected: active }}
+                      accessibilityLabel={`Save as ${type.label}`}
                     >
                       <Ionicons
                         name={type.icon}
@@ -180,9 +232,9 @@ export default function AddAddressScreen() {
             onPress={handleSave}
             activeOpacity={0.85}
             accessibilityRole="button"
-            accessibilityLabel="Save address and continue"
+            accessibilityLabel="Save address and select for booking"
           >
-            <Text style={styles.saveBtnText}>Save Address</Text>
+            <Text style={styles.saveBtnText}>Save & Apply Address</Text>
             <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
@@ -261,6 +313,10 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
   required: { color: Colors.error },
+  row: {
+    flexDirection: 'row',
+    gap: 12,
+  },
   input: {
     backgroundColor: '#F8FAFC',
     borderRadius: 12,

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -91,7 +91,7 @@ export default function MoneyScreen() {
     }
   };
 
-  const onPaymentSuccess = async (data: { paymentId: string }) => {
+  const onPaymentSuccess = async (_data: { paymentId: string }) => {
     setRazorpayHtml(null);
     const newBalance = walletBalance + totalCredit;
     setWalletBalance(newBalance);

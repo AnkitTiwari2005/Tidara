@@ -45,6 +45,20 @@ export interface Location {
   type?: 'Home' | 'Work' | 'Other';
 }
 
+export interface UserAddress {
+  id: string;
+  flat: string;
+  area: string;
+  landmark?: string;
+  city: string;
+  pincode?: string;
+  fullAddress: string;
+  type: 'Home' | 'Work' | 'Other';
+  lat: number;
+  lng: number;
+  isDefault?: boolean;
+}
+
 export interface CartItem {
   serviceId: string;
   quantity: number;
@@ -57,7 +71,10 @@ interface AppState {
   user: User | null;
   isAuthenticated: boolean;
   location: Location | null;
+  savedAddresses: UserAddress[];
   walletBalance: number;
+  hasTidaraPass: boolean;
+  passVisitsLeft: number;
 
   // ── Ephemeral state ──────────────────────────────────────────────────────
   cartItems: CartItem[];
@@ -78,6 +95,15 @@ interface AppState {
   setLocation: (location: Location | null) => void;
   setWalletBalance: (balance: number) => void;
   
+  // Address Management
+  addSavedAddress: (address: Omit<UserAddress, 'id'>) => UserAddress;
+  removeSavedAddress: (id: string) => void;
+  selectSavedAddress: (id: string) => void;
+
+  // Pass Actions
+  setTidaraPass: (active: boolean, visits: number) => void;
+  usePassVisit: () => boolean;
+
   // Cart Actions
   addToCart: (serviceId: string, durationMinutes?: number, unitPrice?: number) => void;
   removeFromCart: (serviceId: string) => void;
@@ -106,7 +132,10 @@ export const useAppStore = create<AppState>()(
       user: null,
       isAuthenticated: false,
       location: null,
+      savedAddresses: [],
       walletBalance: 0,
+      hasTidaraPass: false,
+      passVisitsLeft: 0,
       cartItems: [],
       bookingMode: 'Instant',
       scheduledDays: ['Mon', 'Wed', 'Fri'],
@@ -123,6 +152,65 @@ export const useAppStore = create<AppState>()(
       setAuthenticated: (value) => set({ isAuthenticated: value }),
       setLocation: (location) => set({ location }),
       setWalletBalance: (balance) => set({ walletBalance: balance }),
+
+      // ── Address Actions ────────────────────────────────────────────────
+      addSavedAddress: (addrData) => {
+        const id = 'addr_' + Date.now();
+        const newAddress: UserAddress = {
+          ...addrData,
+          id,
+        };
+        const currentList = get().savedAddresses;
+        const updatedList = [newAddress, ...currentList.map(a => addrData.isDefault ? { ...a, isDefault: false } : a)];
+        
+        set({
+          savedAddresses: updatedList,
+          location: {
+            city: newAddress.city,
+            address: newAddress.fullAddress,
+            lat: newAddress.lat,
+            lng: newAddress.lng,
+            isServiceable: true,
+            type: newAddress.type,
+          },
+        });
+        return newAddress;
+      },
+
+      removeSavedAddress: (id) => {
+        set({
+          savedAddresses: get().savedAddresses.filter((a) => a.id !== id),
+        });
+      },
+
+      selectSavedAddress: (id) => {
+        const addr = get().savedAddresses.find((a) => a.id === id);
+        if (addr) {
+          set({
+            location: {
+              city: addr.city,
+              address: addr.fullAddress,
+              lat: addr.lat,
+              lng: addr.lng,
+              isServiceable: true,
+              type: addr.type,
+            },
+          });
+        }
+      },
+
+      // ── Pass Actions ───────────────────────────────────────────────────
+      setTidaraPass: (active, visits) =>
+        set({ hasTidaraPass: active, passVisitsLeft: visits }),
+
+      usePassVisit: () => {
+        const { hasTidaraPass, passVisitsLeft } = get();
+        if (hasTidaraPass && passVisitsLeft > 0) {
+          set({ passVisitsLeft: passVisitsLeft - 1 });
+          return true;
+        }
+        return false;
+      },
 
       // ── Cart ───────────────────────────────────────────────────────────
       addToCart: (serviceId, durationMinutes, unitPrice) => {
@@ -250,9 +338,12 @@ export const useAppStore = create<AppState>()(
         user: state.user,
         isAuthenticated: state.isAuthenticated,
         location: state.location,
+        savedAddresses: state.savedAddresses,
         walletBalance: state.walletBalance,
+        hasTidaraPass: state.hasTidaraPass,
+        passVisitsLeft: state.passVisitsLeft,
       }),
-      onRehydrateStorage: () => (state, error) => {
+      onRehydrateStorage: () => () => {
         // Guarantee hydration flag is set even if reading storage throws
         useAppStore.setState({ _hasHydrated: true });
       },

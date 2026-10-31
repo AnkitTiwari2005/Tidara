@@ -1,4 +1,3 @@
-import React from 'react';
 import { View, StyleSheet, ActivityIndicator, Modal, TouchableOpacity, Text, Alert, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';

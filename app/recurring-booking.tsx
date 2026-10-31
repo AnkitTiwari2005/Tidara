@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
 import { useAppStore } from '../store/useAppStore';
+import { SERVICES } from '../constants/services';
 
 const TIME_SLOTS = [
   '7:00 AM', '8:00 AM', '9:00 AM', '10:00 AM',
@@ -20,6 +21,8 @@ const TIME_SLOTS = [
   '3:00 PM', '4:00 PM', '5:00 PM', '6:00 PM',
   '7:00 PM', '8:00 PM',
 ];
+
+const WEEKDAY_ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 const DAYS = [
   { short: 'Mon', full: 'Monday' },
@@ -32,32 +35,59 @@ const DAYS = [
 ];
 
 export default function RecurringBookingScreen() {
-  const { scheduledDays: initialDays, scheduledSlot: initialSlot, setRecurringSchedule } = useAppStore();
+  const {
+    scheduledDays: initialDays,
+    scheduledSlot: initialSlot,
+    setRecurringSchedule,
+    cartItems,
+    addToCart,
+  } = useAppStore();
 
   const [selectedSlot, setSelectedSlot] = useState<string>(initialSlot || '9:00 AM');
-  const [selectedDays, setSelectedDays] = useState<string[]>(initialDays.length > 0 ? initialDays : ['Mon', 'Wed', 'Fri']);
+  const [selectedDays, setSelectedDays] = useState<string[]>(
+    initialDays.length > 0 ? initialDays : ['Mon', 'Wed', 'Fri']
+  );
+  const [selectedServiceId, setSelectedServiceId] = useState<string>('1');
 
   const toggleDay = (day: string) => {
-    setSelectedDays((prev) =>
-      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
-    );
+    setSelectedDays((prev) => {
+      const next = prev.includes(day)
+        ? prev.filter((d) => d !== day)
+        : [...prev, day];
+      // Always maintain chronological weekday order (RC-04)
+      return next.sort((a, b) => WEEKDAY_ORDER.indexOf(a) - WEEKDAY_ORDER.indexOf(b));
+    });
   };
 
   const handleConfirm = () => {
-    if (selectedDays.length === 0 || !selectedSlot) {
-      Alert.alert('Incomplete Schedule', 'Please pick at least one day and a preferred time slot.');
+    if (selectedDays.length === 0) {
+      Alert.alert('Select Days', 'Please select at least one day for your recurring visits.');
+      return;
+    }
+    if (!selectedSlot) {
+      Alert.alert('Select Slot', 'Please select an arrival time slot for your expert.');
       return;
     }
 
-    // Persist recurring schedule in store
-    setRecurringSchedule(selectedDays, selectedSlot);
+    const sortedDays = [...selectedDays].sort(
+      (a, b) => WEEKDAY_ORDER.indexOf(a) - WEEKDAY_ORDER.indexOf(b)
+    );
+
+    // Save recurring schedule in store (RC-01)
+    setRecurringSchedule(sortedDays, selectedSlot);
+
+    // If cart is empty, add the selected service so checkout doesn't fail (RC-02)
+    if (cartItems.length === 0) {
+      const svc = SERVICES.find((s) => s.id === selectedServiceId) ?? SERVICES[0];
+      addToCart(svc.id, 60, svc.price);
+    }
 
     Alert.alert(
       'Recurring Schedule Set! 🎉',
-      `Your pro will arrive every ${selectedDays.join(', ')} at ${selectedSlot}. You can modify or pause anytime.`,
+      `Your pro is scheduled every ${sortedDays.join(', ')} at ${selectedSlot}. You can pause or cancel anytime from the Bookings tab.`,
       [
         {
-          text: 'Continue to Cart',
+          text: 'Review in Cart',
           onPress: () => router.push('/cart'),
         },
       ]
@@ -78,7 +108,7 @@ export default function RecurringBookingScreen() {
         >
           <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Recurring Schedule</Text>
+        <Text style={styles.headerTitle}>Set Recurring Schedule</Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -93,7 +123,7 @@ export default function RecurringBookingScreen() {
           <View style={styles.infoTextContainer}>
             <Text style={styles.infoTitle}>Dedicated Pro for Your Home</Text>
             <Text style={styles.infoSub}>
-              Trained helper arrives on your selected days. Zero re-booking effort.
+              Same certified helper arrives every week. No re-booking hassle. Pause or cancel anytime.
             </Text>
           </View>
         </View>
@@ -102,7 +132,7 @@ export default function RecurringBookingScreen() {
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
             <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
-            <Text style={styles.sectionTitle}>Select Preferred Days</Text>
+            <Text style={styles.sectionTitle}>Select Weekly Days</Text>
           </View>
 
           <View style={styles.daysRow}>
@@ -116,7 +146,7 @@ export default function RecurringBookingScreen() {
                   activeOpacity={0.8}
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: active }}
-                  accessibilityLabel={day.full}
+                  accessibilityLabel={`${day.full}, ${active ? 'selected' : 'not selected'}`}
                 >
                   <Text style={[styles.dayPillText, active && styles.dayPillTextActive]}>
                     {day.short}
@@ -126,9 +156,12 @@ export default function RecurringBookingScreen() {
             })}
           </View>
 
-          <Text style={styles.daysSelectedText}>
-            Selected: {selectedDays.length > 0 ? selectedDays.join(', ') : 'None'}
-          </Text>
+          <View style={styles.summaryRow}>
+            <Ionicons name="checkmark-circle-outline" size={14} color={Colors.primary} />
+            <Text style={styles.daysSelectedText}>
+              Every {selectedDays.length > 0 ? selectedDays.join(', ') : 'week'}
+            </Text>
+          </View>
         </View>
 
         {/* Slot Timings */}
@@ -149,7 +182,7 @@ export default function RecurringBookingScreen() {
                   activeOpacity={0.8}
                   accessibilityRole="radio"
                   accessibilityState={{ selected: active }}
-                  accessibilityLabel={`Time slot ${slot}`}
+                  accessibilityLabel={`Arrival time ${slot}, ${active ? 'selected' : 'not selected'}`}
                 >
                   <Text style={[styles.slotBtnText, active && styles.slotBtnTextActive]}>
                     {slot}
@@ -158,6 +191,51 @@ export default function RecurringBookingScreen() {
               );
             })}
           </View>
+        </View>
+
+        {/* Service Selection (if Cart is empty) */}
+        {cartItems.length === 0 && (
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="sparkles-outline" size={18} color={Colors.primary} />
+              <Text style={styles.sectionTitle}>Recurring Service Task</Text>
+            </View>
+
+            <View style={styles.servicesList}>
+              {SERVICES.slice(0, 4).map((svc) => {
+                const isSelected = selectedServiceId === svc.id;
+                return (
+                  <TouchableOpacity
+                    key={svc.id}
+                    style={[styles.serviceOption, isSelected && styles.serviceOptionActive]}
+                    onPress={() => setSelectedServiceId(svc.id)}
+                    activeOpacity={0.8}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: isSelected }}
+                    accessibilityLabel={`${svc.name}, price ₹${svc.price}`}
+                  >
+                    <Ionicons
+                      name={isSelected ? 'radio-button-on' : 'radio-button-off'}
+                      size={18}
+                      color={isSelected ? Colors.primary : Colors.textMuted}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.serviceName}>{svc.name}</Text>
+                      <Text style={styles.servicePrice}>₹{svc.price} per visit • {svc.duration}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
+        {/* Terms Note */}
+        <View style={styles.termsNote}>
+          <Ionicons name="shield-checkmark-outline" size={16} color="#059669" />
+          <Text style={styles.termsText}>
+            Zero cancellation charges. You are only billed per completed visit with 100% satisfaction guarantee.
+          </Text>
         </View>
       </ScrollView>
 
@@ -168,9 +246,9 @@ export default function RecurringBookingScreen() {
           onPress={handleConfirm}
           activeOpacity={0.85}
           accessibilityRole="button"
-          accessibilityLabel="Save recurring slot and continue"
+          accessibilityLabel="Confirm recurring schedule"
         >
-          <Text style={styles.confirmBtnText}>Save Recurring Slot</Text>
+          <Text style={styles.confirmBtnText}>Confirm Recurring Schedule</Text>
           <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
@@ -265,10 +343,16 @@ const styles = StyleSheet.create({
   dayPillTextActive: {
     color: '#FFFFFF',
   },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingTop: 4,
+  },
   daysSelectedText: {
-    fontSize: 11,
-    color: Colors.textMuted,
-    fontWeight: '600',
+    fontSize: 12,
+    color: Colors.primary,
+    fontWeight: '700',
   },
   slotsGrid: {
     flexDirection: 'row',
@@ -295,6 +379,49 @@ const styles = StyleSheet.create({
   },
   slotBtnTextActive: {
     color: Colors.primary,
+  },
+  servicesList: {
+    gap: 8,
+  },
+  serviceOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+  },
+  serviceOptionActive: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+  },
+  serviceName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  servicePrice: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  termsNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#F0FDF4',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#DCFCE7',
+  },
+  termsText: {
+    fontSize: 11,
+    color: '#166534',
+    lineHeight: 16,
+    flex: 1,
   },
   footer: {
     paddingHorizontal: 16,

@@ -315,6 +315,22 @@ export const SERVICES: Service[] = [
     imageUrl: 'https://images.unsplash.com/photo-1585320806297-9794b3e4eeae?auto=format&fit=crop&w=600&q=80',
     isNew: true,
   },
+  {
+    id: 'tidara_pass_3',
+    name: 'Tidara Pass Club (3 Visits)',
+    price: 129,
+    originalPrice: 199,
+    rating: 4.9,
+    ratingCount: '4.9★',
+    iconName: 'gift-outline',
+    iconBg: '#FEF3C7',
+    iconColor: '#D97706',
+    category: 'cleaning',
+    description: 'VIP Club Pass: 3 dedicated 60-min home help sessions.',
+    duration: '3 Visits',
+    imageUrl: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=600&q=80',
+    popular: true,
+  },
 ];
 
 export const FESTIVE_PACKS: FestivePack[] = [

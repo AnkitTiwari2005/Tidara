@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -132,6 +132,11 @@ export default function PaymentScreen() {
     }
 
     const deliveryAddress = location?.address || 'Confirmed Service Address';
+
+    const hasPass = cartDetails.some((item) => item.id === 'tidara_pass_3');
+    if (hasPass) {
+      useAppStore.getState().setTidaraPass(true, 3);
+    }
 
     for (const item of cartDetails) {
       await createBooking({
@@ -309,6 +314,31 @@ export default function PaymentScreen() {
             <Ionicons name="shield-checkmark" size={14} color="#059669" />
             <Text style={styles.secureText}>256-Bit SSL</Text>
           </View>
+        </View>
+
+        {/* Delivery Address Card */}
+        <View style={styles.addressSummaryCard}>
+          <View style={styles.addressSummaryLeft}>
+            <View style={styles.addressIconBox}>
+              <Ionicons name="location" size={18} color={Colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.addressSummaryTitle}>
+                {location?.type ? `${location.type} Address` : 'Service Address'}
+              </Text>
+              <Text style={styles.addressSummaryText} numberOfLines={2}>
+                {location?.address || 'Sector 48, Sohna Road, Gurugram'}
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.changeAddressBtn}
+            onPress={() => router.push('/add-address')}
+            accessibilityRole="button"
+            accessibilityLabel="Change delivery address"
+          >
+            <Text style={styles.changeAddressText}>Change</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Tidara Wallet Option */}
@@ -532,6 +562,55 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#059669',
+  },
+  addressSummaryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  addressSummaryLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    paddingRight: 8,
+  },
+  addressIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#ECFDF5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addressSummaryTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+  addressSummaryText: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  changeAddressBtn: {
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  changeAddressText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.primary,
   },
   paymentOptionCard: {
     flexDirection: 'row',

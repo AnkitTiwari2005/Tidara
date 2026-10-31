@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -9,10 +9,12 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
 import { router } from 'expo-router';
+import { useAppStore } from '../store/useAppStore';
 
 interface LocationModalProps {
   visible: boolean;
@@ -21,6 +23,7 @@ interface LocationModalProps {
 
 export default function SelectLocationModal({ visible, onClose }: LocationModalProps) {
   const [search, setSearch] = useState('');
+  const { savedAddresses, selectSavedAddress, location } = useAppStore();
 
   const handleCurrentLocation = () => {
     onClose();
@@ -31,6 +34,18 @@ export default function SelectLocationModal({ visible, onClose }: LocationModalP
     onClose();
     router.push('/add-address');
   };
+
+  const handleSelectAddress = (id: string) => {
+    selectSavedAddress(id);
+    onClose();
+  };
+
+  const filteredAddresses = savedAddresses.filter(
+    (a) =>
+      a.fullAddress.toLowerCase().includes(search.toLowerCase()) ||
+      a.type.toLowerCase().includes(search.toLowerCase()) ||
+      a.city.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <Modal
@@ -68,7 +83,7 @@ export default function SelectLocationModal({ visible, onClose }: LocationModalP
                   <Ionicons name="search" size={18} color={Colors.textMuted} />
                   <TextInput
                     style={styles.searchInput}
-                    placeholder="Search apartment, road or landmark"
+                    placeholder="Search apartment, road or saved address..."
                     placeholderTextColor={Colors.textMuted}
                     value={search}
                     onChangeText={setSearch}
@@ -77,7 +92,7 @@ export default function SelectLocationModal({ visible, onClose }: LocationModalP
                   />
                 </View>
 
-                {/* Options */}
+                {/* Action Cards */}
                 <View style={styles.optionsRow}>
                   <TouchableOpacity
                     style={styles.optionCard}
@@ -91,7 +106,7 @@ export default function SelectLocationModal({ visible, onClose }: LocationModalP
                     </View>
                     <View>
                       <Text style={styles.optionLabel}>Current GPS</Text>
-                      <Text style={styles.optionSub}>Auto-detect location</Text>
+                      <Text style={styles.optionSub}>Detect sector automatically</Text>
                     </View>
                   </TouchableOpacity>
 
@@ -111,6 +126,74 @@ export default function SelectLocationModal({ visible, onClose }: LocationModalP
                     </View>
                   </TouchableOpacity>
                 </View>
+
+                {/* Saved Addresses List */}
+                {savedAddresses.length > 0 && (
+                  <View style={styles.savedSection}>
+                    <Text style={styles.sectionTitle}>Saved Addresses</Text>
+                    <ScrollView
+                      style={styles.savedList}
+                      showsVerticalScrollIndicator={false}
+                      nestedScrollEnabled
+                    >
+                      {filteredAddresses.map((addr) => {
+                        const isSelected = location?.address === addr.fullAddress;
+                        return (
+                          <TouchableOpacity
+                            key={addr.id}
+                            style={[
+                              styles.savedItem,
+                              isSelected && styles.savedItemActive,
+                            ]}
+                            onPress={() => handleSelectAddress(addr.id)}
+                            activeOpacity={0.7}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Select ${addr.type} address: ${addr.fullAddress}`}
+                          >
+                            <View
+                              style={[
+                                styles.addrIconCircle,
+                                isSelected && { backgroundColor: Colors.primary },
+                              ]}
+                            >
+                              <Ionicons
+                                name={
+                                  addr.type === 'Home'
+                                    ? 'home'
+                                    : addr.type === 'Work'
+                                    ? 'briefcase'
+                                    : 'location'
+                                }
+                                size={16}
+                                color={isSelected ? '#FFFFFF' : Colors.primary}
+                              />
+                            </View>
+
+                            <View style={styles.addrTextContainer}>
+                              <View style={styles.addrTypeRow}>
+                                <Text style={styles.addrType}>{addr.type}</Text>
+                                {isSelected && (
+                                  <View style={styles.currentBadge}>
+                                    <Text style={styles.currentBadgeText}>SELECTED</Text>
+                                  </View>
+                                )}
+                              </View>
+                              <Text style={styles.addrLine} numberOfLines={2}>
+                                {addr.fullAddress}
+                              </Text>
+                            </View>
+
+                            <Ionicons
+                              name={isSelected ? 'checkmark-circle' : 'chevron-forward'}
+                              size={18}
+                              color={isSelected ? Colors.primary : Colors.textMuted}
+                            />
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                )}
               </View>
             </KeyboardAvoidingView>
           </TouchableWithoutFeedback>
@@ -135,8 +218,9 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 40,
-    gap: 16,
+    paddingBottom: 36,
+    gap: 14,
+    maxHeight: '80%',
   },
   handle: {
     width: 36,
@@ -214,5 +298,70 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.textMuted,
     marginTop: 2,
+  },
+  savedSection: {
+    marginTop: 4,
+    gap: 8,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+  savedList: {
+    maxHeight: 180,
+  },
+  savedItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  savedItemActive: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+  },
+  addrIconCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#ECFDF5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addrTextContainer: {
+    flex: 1,
+  },
+  addrTypeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  addrType: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+  currentBadge: {
+    backgroundColor: '#10B981',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+  },
+  currentBadgeText: {
+    fontSize: 8,
+    fontWeight: '900',
+    color: '#FFFFFF',
+  },
+  addrLine: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 2,
+    lineHeight: 15,
   },
 });

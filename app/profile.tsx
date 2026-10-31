@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -32,7 +32,17 @@ const MENU_ITEMS = [
 ];
 
 export default function ProfileScreen() {
-  const { user, walletBalance, setUser, saveUserToDB, logout, addToCart } = useAppStore();
+  const {
+    user,
+    walletBalance,
+    savedAddresses,
+    hasTidaraPass,
+    passVisitsLeft,
+    setUser,
+    saveUserToDB,
+    logout,
+    addToCart,
+  } = useAppStore();
 
   const [editVisible, setEditVisible] = useState(false);
   const [termsVisible, setTermsVisible] = useState(false);
@@ -238,13 +248,19 @@ export default function ProfileScreen() {
               <Ionicons name="gift-outline" size={20} color="#D97706" />
             </View>
             <Text style={styles.tileLabel}>VIP Pass</Text>
-            <Text style={styles.tileValue}>Special</Text>
+            <Text style={styles.tileValue}>
+              {hasTidaraPass && passVisitsLeft > 0 ? `${passVisitsLeft} Visits` : 'Special'}
+            </Text>
           </TouchableOpacity>
         </View>
 
         {/* Menu Section */}
         <View style={styles.menuContainer}>
-          {MENU_ITEMS.map((item, index) => (
+          {MENU_ITEMS.map((item, index) => {
+            const dynamicBadge = item.id === 'address' && savedAddresses.length > 0
+              ? `${savedAddresses.length} Saved`
+              : item.badge;
+            return (
             <TouchableOpacity
               key={item.id}
               style={[
@@ -279,15 +295,16 @@ export default function ProfileScreen() {
 
               <Text style={styles.menuLabel}>{item.label}</Text>
 
-              {item.badge && (
+              {dynamicBadge && (
                 <View style={styles.badgePill}>
-                  <Text style={styles.badgePillText}>{item.badge}</Text>
+                  <Text style={styles.badgePillText}>{dynamicBadge}</Text>
                 </View>
               )}
 
               <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
             </TouchableOpacity>
-          ))}
+            );
+          })}
         </View>
 
         {/* Log Out Button */}
@@ -398,7 +415,7 @@ export default function ProfileScreen() {
         onClose={() => setPassVisible(false)}
         onBook={() => {
           setPassVisible(false);
-          addToCart('pack_1', 180, 129);
+          addToCart('tidara_pass_3', 60, 129);
           router.push('/cart');
         }}
       />
