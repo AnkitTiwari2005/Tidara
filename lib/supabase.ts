@@ -169,3 +169,51 @@ export async function cancelBooking(id: string) {
     return { data: null, error: err };
   }
 }
+
+// ----------------------------------------------------
+// Saved Addresses
+// ----------------------------------------------------
+
+export interface SavedAddress {
+  id?: string;
+  user_phone: string;
+  address_type?: string;
+  flat_no?: string;
+  landmark?: string;
+  full_address: string;
+  city?: string;
+  latitude?: number;
+  longitude?: number;
+  created_at?: string;
+}
+
+export async function getUserAddresses(phone: string) {
+  try {
+    const canonicalPhone = normalizePhone(phone);
+    const { data, error } = await supabase
+      .from('addresses')
+      .select('*')
+      .eq('user_phone', canonicalPhone)
+      .order('created_at', { ascending: false });
+    return { data: data || [], error };
+  } catch (err: any) {
+    return { data: [], error: err };
+  }
+}
+
+export async function saveUserAddress(address: SavedAddress) {
+  try {
+    const canonicalPhone = normalizePhone(address.user_phone);
+    const { data, error } = await supabase
+      .from('addresses')
+      .insert({
+        ...address,
+        user_phone: canonicalPhone,
+      })
+      .select()
+      .maybeSingle();
+    return { data, error };
+  } catch (err: any) {
+    return { data: null, error: err };
+  }
+}
