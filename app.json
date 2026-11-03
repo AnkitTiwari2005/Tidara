@@ -17,7 +17,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0B5335",
+        "backgroundColor": "#02352C",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "versionCode": 9,
@@ -36,7 +36,7 @@
         {
           "image": "./assets/splash-icon.png",
           "resizeMode": "contain",
-          "backgroundColor": "#063D26"
+          "backgroundColor": "#02352C"
         }
       ],
       [
