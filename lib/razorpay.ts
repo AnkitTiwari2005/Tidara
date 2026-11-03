@@ -1,6 +1,9 @@
 // Razorpay integration helpers
+// RAZORPAY_KEY_ID is public for the client-side checkout modal.
+// RAZORPAY_KEY_SECRET is securely stored on Supabase Edge Functions and never exposed in the app.
+import { supabase } from './supabase';
+
 export const RAZORPAY_KEY_ID = 'rzp_test_Tu0bQc9VvUOCR0';
-const RAZORPAY_KEY_SECRET = 'ldQc4YazS5sRY8wbRe87Sr4i';
 
 export interface RazorpayOrderResponse {
   id: string;
@@ -15,29 +18,8 @@ export interface RazorpayPaymentSuccess {
   razorpay_signature: string;
 }
 
-// Hermes-safe base64 encoding (avoids missing btoa crash in React Native)
-function encodeBase64(input: string): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
-  let str = input;
-  let output = '';
-
-  for (
-    let block = 0, charCode, i = 0, map = chars;
-    str.charAt(i | 0) || ((map = '='), i % 1);
-    output += map.charAt(63 & (block >> (8 - (i % 1) * 8)))
-  ) {
-    charCode = str.charCodeAt((i += 3 / 4));
-    if (charCode > 0xff) {
-      throw new Error('Base64 encoding error: input contains characters outside Latin1 range.');
-    }
-    block = (block << 8) | charCode;
-  }
-
-  return output;
-}
-
 /**
- * Create a Razorpay order via their REST API.
+ * Create a Razorpay order via Supabase Edge Function (razorpay-order).
  * Amount should be in PAISE (multiply ₹ by 100).
  */
 export async function createRazorpayOrder(
@@ -45,41 +27,30 @@ export async function createRazorpayOrder(
   receipt: string
 ): Promise<RazorpayOrderResponse> {
   const sanitizedAmount = Math.max(100, Math.round(amountInPaise));
-  const sanitizedReceipt = receipt.slice(0, 40); // Razorpay max receipt length is 40 chars
+  const sanitizedReceipt = receipt.slice(0, 40);
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
 
   try {
-    const credentials = encodeBase64(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`);
-
-    const response = await fetch('https://api.razorpay.com/v1/orders', {
-      method: 'POST',
-      headers: {
-        Authorization: `Basic ${credentials}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    const { data, error } = await supabase.functions.invoke('razorpay-order', {
+      body: {
         amount: sanitizedAmount,
-        currency: 'INR',
         receipt: sanitizedReceipt,
-        payment_capture: 1,
-      }),
-      signal: controller.signal,
+      },
     });
 
     clearTimeout(timeoutId);
 
-    if (!response.ok) {
-      let errorMsg = 'Failed to initialize payment gateway order';
-      try {
-        const err = await response.json();
-        if (err.error?.description) errorMsg = err.error.description;
-      } catch {}
+    if (error || !data || data.error) {
+      const errorMsg =
+        data?.error?.description ||
+        error?.message ||
+        'Failed to initialize payment gateway order';
       throw new Error(errorMsg);
     }
 
-    return await response.json();
+    return data as RazorpayOrderResponse;
   } catch (err: any) {
     clearTimeout(timeoutId);
     if (err.name === 'AbortError') {

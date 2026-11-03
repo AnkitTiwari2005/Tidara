@@ -1,97 +1,62 @@
+import { supabase } from './supabase';
+
 const WHATSY_BASE = 'https://honeydew-butterfly-241889.hostingersite.com';
-const WHATSY_API_KEY = 'NW7tDgtm6CjzT1xWzz5pzkCa9dWA2jD9jtOJNOGnm4Y';
 
 /**
- * Sends a 6-digit WhatsApp OTP to the specified mobile number with timeout guard.
+ * Sends a 6-digit WhatsApp OTP to the specified mobile number via Supabase Edge Function
+ * (keeps WHATSY_API_KEY secure in Supabase Secrets).
  */
 export async function sendWhatsAppOTP(
   phone: string
 ): Promise<{ success: boolean; message?: string }> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 12000);
-
-  // Send the clean 10-digit number or with +91 based on standard provider spec
   const cleanDigits = phone.replace(/\D/g, '').slice(-10);
 
   try {
-    const res = await fetch(`${WHATSY_BASE}/api/v1/otp/send`, {
-      method: 'POST',
-      headers: {
-        'X-Api-Key': WHATSY_API_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ phone: cleanDigits, digits: 6, expiry_minutes: 5 }),
-      signal: controller.signal,
+    const { data, error } = await supabase.functions.invoke('whatsy-otp', {
+      body: { action: 'send', phone: cleanDigits },
     });
-    clearTimeout(timeoutId);
 
-    let data: any = null;
-    try {
-      data = await res.json();
-    } catch {
-      data = null;
+    if (error) {
+      return { success: false, message: error.message || 'Failed to dispatch OTP. Please retry.' };
     }
 
-    // Require positive confirmation; never fail-open on non-JSON or gateway error pages
-    const success = res.ok && data !== null && (data.success === true || data.status === 'success');
+    const success = data !== null && (data.success === true || data.status === 'success');
     return {
       success,
-      message: data?.message ?? (success ? 'OTP sent successfully' : 'Failed to send OTP'),
+      message: data?.message ?? (success ? 'OTP sent successfully via WhatsApp' : 'Failed to send OTP'),
     };
   } catch (err: any) {
-    clearTimeout(timeoutId);
-    if (err.name === 'AbortError') {
-      return { success: false, message: 'Request timed out. Please check connection.' };
-    }
     return { success: false, message: 'Network connection issue. Please retry.' };
   }
 }
 
 /**
- * Verifies the 6-digit OTP code with timeout and error classification.
+ * Verifies the 6-digit OTP code via Supabase Edge Function.
  */
 export async function verifyWhatsAppOTP(
   phone: string,
   code: string
 ): Promise<{ success: boolean; message?: string }> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 12000);
-
   const cleanDigits = phone.replace(/\D/g, '').slice(-10);
 
   try {
-    const res = await fetch(`${WHATSY_BASE}/api/v1/otp/verify`, {
-      method: 'POST',
-      headers: {
-        'X-Api-Key': WHATSY_API_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ phone: cleanDigits, code: code.trim() }),
-      signal: controller.signal,
+    const { data, error } = await supabase.functions.invoke('whatsy-otp', {
+      body: { action: 'verify', phone: cleanDigits, code: code.trim() },
     });
-    clearTimeout(timeoutId);
 
-    let data: any = null;
-    try {
-      data = await res.json();
-    } catch {
-      data = null;
+    if (error) {
+      return { success: false, message: error.message || 'Verification failed. Please retry.' };
     }
 
-    // Explicit verification check - rejects HTML 200 responses / error pages
     const success =
-      res.ok &&
       data !== null &&
       (data.success === true || data.verified === true || data.status === 'verified');
+
     return {
       success,
       message: data?.message ?? (success ? 'Code verified' : 'Invalid or expired OTP'),
     };
   } catch (err: any) {
-    clearTimeout(timeoutId);
-    if (err.name === 'AbortError') {
-      return { success: false, message: 'Verification timed out. Please retry.' };
-    }
     return { success: false, message: 'Network error. Please try again.' };
   }
 }
