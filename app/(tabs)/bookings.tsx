@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, formatCurrency } from '../../constants/colors';
 import { useAppStore, showAppAlert } from '../../store/useAppStore';
 import { getUserBookings, cancelBooking, Booking } from '../../lib/supabase';
+import { sendBookingCancellationWhatsApp } from '../../lib/whatsy';
 
 type TabType = 'upcoming' | 'previous';
 
@@ -77,6 +78,13 @@ export default function BookingsScreen() {
               return;
             }
             await fetchBookings();
+            if (user?.phone) {
+              sendBookingCancellationWhatsApp({
+                phone: user.phone,
+                customerName: user.firstName,
+                serviceName: booking.service_name,
+              });
+            }
             showAppAlert('Booking Cancelled', 'Your booking was cancelled.', 'info');
           },
         },

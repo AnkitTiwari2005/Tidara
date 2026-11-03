@@ -1,5 +1,6 @@
 // Supabase Edge Function: whatsy-otp
-// Securely proxies OTP send & verify requests to Whatsy without exposing WHATSY_API_KEY to the mobile client.
+// Securely proxies OTP send, OTP verify, and custom WhatsApp notifications
+// without exposing WHATSY_API_KEY to the mobile client.
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -23,17 +24,20 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { action, phone, code } = await req.json();
+    const body = await req.json();
+    const action = body.action;
+    const rawPhone = body.phone || body.recipient;
 
-    if (!phone) {
+    if (!rawPhone) {
       return new Response(
-        JSON.stringify({ success: false, message: 'Phone number is required' }),
+        JSON.stringify({ success: false, message: 'Phone number/recipient is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const cleanDigits = String(phone).replace(/\D/g, '').slice(-10);
+    const cleanDigits = String(rawPhone).replace(/\D/g, '').slice(-10);
 
+    // 1. Dispatch OTP
     if (action === 'send') {
       const res = await fetch(`${baseUrl}/api/v1/otp/send`, {
         method: 'POST',
@@ -56,7 +60,11 @@ Deno.serve(async (req) => {
         JSON.stringify({ success: true, message: data.message || 'OTP dispatched via WhatsApp' }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
-    } else if (action === 'verify') {
+    }
+
+    // 2. Verify OTP
+    if (action === 'verify') {
+      const code = body.code;
       if (!code) {
         return new Response(
           JSON.stringify({ success: false, message: 'OTP code is required' }),
@@ -83,12 +91,48 @@ Deno.serve(async (req) => {
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
-    } else {
+    }
+
+    // 3. Send WhatsApp Notification Message (Booking confirmation, cancellation, etc.)
+    if (action === 'send-notification' || action === 'send-message') {
+      const message = body.message;
+      if (!message || typeof message !== 'string' || !message.trim()) {
+        return new Response(
+          JSON.stringify({ success: false, message: 'Message text is required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const res = await fetch(`${baseUrl}/api/v1/messages`, {
+        method: 'POST',
+        headers: {
+          'X-Api-Key': apiKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          recipient: `+91${cleanDigits}`,
+          message: message.trim(),
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+      const ok = res.ok && data !== null && (data.status === 'queued' || data.status === 'sent');
+
       return new Response(
-        JSON.stringify({ success: false, message: 'Invalid action. Must be "send" or "verify"' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          success: ok,
+          messageId: data?.id,
+          status: data?.status || 'unknown',
+          message: ok ? 'WhatsApp notification sent' : (data?.error || 'Failed to send notification'),
+        }),
+        { status: ok ? 200 : (res.status || 500), headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    return new Response(
+      JSON.stringify({ success: false, message: 'Invalid action. Must be "send", "verify", or "send-notification"' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   } catch (err: any) {
     return new Response(
       JSON.stringify({ success: false, message: err?.message || 'Internal error in whatsy-otp function' }),

@@ -17,6 +17,7 @@ import { Colors, formatCurrency } from '../constants/colors';
 import { useAppStore, showAppAlert } from '../store/useAppStore';
 import { createRazorpayOrder, getRazorpayCheckoutHTML } from '../lib/razorpay';
 import { createBooking, updateUserProfile, normalizePhone } from '../lib/supabase';
+import { sendBookingConfirmationWhatsApp } from '../lib/whatsy';
 import RazorpayWebView from '../components/RazorpayWebView';
 import { SERVICES, FESTIVE_PACKS, PaymentIcons, BrandImages } from '../constants/services';
 
@@ -165,6 +166,18 @@ export default function PaymentScreen() {
       if (error || !data) {
         hasFailure = true;
       }
+    }
+
+    if (!hasFailure) {
+      sendBookingConfirmationWhatsApp({
+        phone,
+        customerName: user?.firstName,
+        serviceNames: cartDetails.map((item) => item.name),
+        totalAmount: total,
+        paymentMethod,
+        scheduledDisplay,
+        address: deliveryAddress,
+      });
     }
 
     return !hasFailure;
