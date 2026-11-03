@@ -46,9 +46,9 @@ export async function upsertUserProfile(profile: Partial<UserProfile> & { phone:
       phone: canonicalPhone,
     };
 
-    // If id is not a valid UUID (e.g. client Date.now() timestamp), omit it
+    // If id is missing, empty, or not a valid UUID (e.g. client Date.now() timestamp), omit it
     // so Postgres's default gen_random_uuid() safely generates a real UUID.
-    if (payload.id && !UUID_REGEX.test(payload.id)) {
+    if (!payload.id || !UUID_REGEX.test(payload.id)) {
       delete payload.id;
     }
 
@@ -108,14 +108,49 @@ export async function updateUserProfile(
 export async function deleteUserAccount(phone: string) {
   try {
     const canonicalPhone = normalizePhone(phone);
-    // Delete user's addresses and bookings first to avoid orphan rows
-    await supabase.from('addresses').delete().eq('user_phone', canonicalPhone);
-    await supabase.from('bookings').delete().eq('user_phone', canonicalPhone);
-    // Delete user row
-    const { error } = await supabase.from('users').delete().eq('phone', canonicalPhone);
-    return { success: !error, error };
+    // Call server-side SECURITY DEFINER RPC to ensure real deletion bypassing client RLS limits
+    const { data, error } = await supabase.rpc('delete_user_account', { p_phone: canonicalPhone });
+    if (error) {
+      // Fallback direct delete for backwards compatibility
+      await supabase.from('addresses').delete().eq('user_phone', canonicalPhone);
+      await supabase.from('bookings').delete().eq('user_phone', canonicalPhone);
+      const { error: userErr } = await supabase.from('users').delete().eq('phone', canonicalPhone);
+      return { success: !userErr, error: userErr };
+    }
+    return { success: data?.success ?? true, error: null };
   } catch (err: any) {
     return { success: false, error: err };
+  }
+}
+
+export async function debitWallet(phone: string, amount: number, description?: string) {
+  try {
+    const canonicalPhone = normalizePhone(phone);
+    const { data, error } = await supabase.rpc('debit_wallet', {
+      p_phone: canonicalPhone,
+      p_amount: Math.round(amount),
+      p_description: description || 'Service Booking Payment',
+    });
+    if (error) return { success: false, error };
+    return { success: data?.success ?? false, remaining: data?.remaining, error: data?.error };
+  } catch (err: any) {
+    return { success: false, error: err?.message };
+  }
+}
+
+export async function creditWallet(phone: string, amount: number, bonus: number, description?: string) {
+  try {
+    const canonicalPhone = normalizePhone(phone);
+    const { data, error } = await supabase.rpc('credit_wallet', {
+      p_phone: canonicalPhone,
+      p_amount: Math.round(amount),
+      p_bonus: Math.round(bonus),
+      p_description: description || 'Wallet Top-up',
+    });
+    if (error) return { success: false, error };
+    return { success: data?.success ?? false, balance: data?.balance, error: data?.error };
+  } catch (err: any) {
+    return { success: false, error: err?.message };
   }
 }
 
@@ -131,6 +166,7 @@ export interface Booking {
   price: number;
   status: 'upcoming' | 'completed' | 'cancelled';
   scheduled_at: string;
+  slot_label?: string;
   address: string;
   payment_id?: string;
   order_id?: string;
@@ -171,14 +207,13 @@ export async function createBooking(booking: Omit<Booking, 'id' | 'created_at'>)
   }
 }
 
-export async function cancelBooking(id: string) {
+export async function cancelBooking(id: string, userPhone?: string) {
   try {
-    const { data, error } = await supabase
-      .from('bookings')
-      .update({ status: 'cancelled' })
-      .eq('id', id)
-      .select()
-      .maybeSingle();
+    let query = supabase.from('bookings').update({ status: 'cancelled' }).eq('id', id);
+    if (userPhone) {
+      query = query.eq('user_phone', normalizePhone(userPhone));
+    }
+    const { data, error } = await query.select();
     return { data, error };
   } catch (err: any) {
     return { data: null, error: err };

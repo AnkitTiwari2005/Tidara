@@ -73,6 +73,8 @@ export default function CartScreen() {
     })
     .filter(Boolean) as Array<{
     serviceId: string;
+    durationMinutes?: number;
+    unitPrice?: number;
     quantity: number;
     service: {
       id: string;
@@ -293,7 +295,7 @@ export default function CartScreen() {
             </View>
           ) : (
             cartServices.map((ci) => (
-              <View key={ci.serviceId} style={styles.cartItemRow}>
+              <View key={`${ci.serviceId}-${ci.durationMinutes ?? 60}`} style={styles.cartItemRow}>
                 <View style={[styles.itemIconBox, { backgroundColor: ci.service.iconBg }]}>
                   <Ionicons
                     name={ci.service.iconName as any}
@@ -322,7 +324,7 @@ export default function CartScreen() {
                 {/* Stepper */}
                 <View style={styles.stepperBox}>
                   <TouchableOpacity
-                    onPress={() => removeFromCart(ci.serviceId)}
+                    onPress={() => removeFromCart(ci.serviceId, ci.durationMinutes)}
                     style={styles.stepperBtn}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityRole="button"
@@ -332,7 +334,7 @@ export default function CartScreen() {
                   </TouchableOpacity>
                   <Text style={styles.stepperQty}>{ci.quantity}</Text>
                   <TouchableOpacity
-                    onPress={() => addToCart(ci.serviceId)}
+                    onPress={() => addToCart(ci.serviceId, ci.durationMinutes, ci.unitPrice)}
                     style={styles.stepperBtn}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityRole="button"

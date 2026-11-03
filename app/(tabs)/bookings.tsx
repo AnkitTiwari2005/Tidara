@@ -16,7 +16,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, formatCurrency } from '../../constants/colors';
 import { useAppStore, showAppAlert } from '../../store/useAppStore';
 import { getUserBookings, cancelBooking, Booking } from '../../lib/supabase';
-import { sendBookingCancellationWhatsApp } from '../../lib/whatsy';
 
 type TabType = 'upcoming' | 'previous';
 
@@ -34,10 +33,10 @@ export default function BookingsScreen() {
       return;
     }
     const { data, error } = await getUserBookings(user.phone);
-    if (!error && data) {
+    if (error) {
+      showAppAlert('Connection Notice', 'Could not sync latest bookings. Pull down to refresh.', 'warning');
+    } else if (data) {
       setBookings(data);
-    } else {
-      setBookings(data ?? []);
     }
     setLoading(false);
     setRefreshing(false);
@@ -71,20 +70,13 @@ export default function BookingsScreen() {
           style: 'destructive',
           onPress: async () => {
             setLoading(true);
-            const { error } = await cancelBooking(booking.id!);
+            const { error } = await cancelBooking(booking.id!, user?.phone);
             if (error) {
               setLoading(false);
               showAppAlert('Error', 'Could not cancel booking. Please try again.', 'error');
               return;
             }
             await fetchBookings();
-            if (user?.phone) {
-              sendBookingCancellationWhatsApp({
-                phone: user.phone,
-                customerName: user.firstName,
-                serviceName: booking.service_name,
-              });
-            }
             showAppAlert('Booking Cancelled', 'Your booking was cancelled.', 'info');
           },
         },

@@ -73,7 +73,8 @@ export default function ServiceDetailScreen() {
   const currentOriginalPrice = Math.round(baseOriginalPrice * currentMultiplier);
   const discountPct = Math.max(10, Math.round(((currentOriginalPrice - currentPrice) / currentOriginalPrice) * 100));
 
-  const cartItem = cartItems.find((ci) => ci.serviceId === service.id);
+  const selectedMins = DURATION_OPTIONS[selectedDurationIndex]?.mins ?? 60;
+  const cartItem = cartItems.find((ci) => ci.serviceId === service.id && (ci.durationMinutes ?? 60) === selectedMins);
   const qty = cartItem?.quantity ?? 0;
   const cartCount = getCartCount();
 
@@ -266,7 +267,7 @@ export default function ServiceDetailScreen() {
         {qty > 0 ? (
           <View style={styles.stepperContainer}>
             <TouchableOpacity
-              onPress={() => removeFromCart(service.id)}
+              onPress={() => removeFromCart(service.id, selectedMins)}
               style={styles.stepperBtn}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityRole="button"

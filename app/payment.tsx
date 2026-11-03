@@ -16,8 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, formatCurrency } from '../constants/colors';
 import { useAppStore, showAppAlert } from '../store/useAppStore';
 import { createRazorpayOrder, getRazorpayCheckoutHTML } from '../lib/razorpay';
-import { createBooking, updateUserProfile, normalizePhone } from '../lib/supabase';
-import { sendBookingConfirmationWhatsApp } from '../lib/whatsy';
+import { createBooking, updateUserProfile, normalizePhone, debitWallet } from '../lib/supabase';
 import RazorpayWebView from '../components/RazorpayWebView';
 import { SERVICES, FESTIVE_PACKS, PaymentIcons, BrandImages } from '../constants/services';
 
@@ -130,21 +129,21 @@ export default function PaymentScreen() {
     const phone = normalizePhone(user.phone);
 
     let scheduledDisplay = 'Today (Express 15-Min)';
+    let scheduledIso = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+
     if (bookingMode === 'Recurring') {
       scheduledDisplay = `Recurring: ${scheduledDays?.join(', ') || 'Weekly'} @ ${scheduledSlot || '9:00 AM'}`;
+      const target = new Date();
+      target.setDate(target.getDate() + 1);
+      scheduledIso = target.toISOString();
     } else if (bookingMode === 'Scheduled') {
       scheduledDisplay = `Scheduled Slot: ${scheduledSlot || 'Standard Slot'}`;
+      const target = new Date();
+      target.setDate(target.getDate() + 1);
+      scheduledIso = target.toISOString();
     }
 
     const deliveryAddress = location?.address || 'Confirmed Service Address';
-
-    const hasPass = cartDetails.some((item) => item.id === 'tidara_pass_3');
-    if (hasPass) {
-      useAppStore.getState().setTidaraPass(true, 3);
-    }
-
-    // Pass valid ISO 8601 timestamp string for scheduled_at
-    const nowIso = new Date().toISOString();
     let hasFailure = false;
 
     for (const item of cartDetails) {
@@ -154,9 +153,10 @@ export default function PaymentScreen() {
         service_name: item.name,
         price: item.price * item.quantity,
         quantity: item.quantity,
-        duration: item.duration ? `${item.duration} • ${scheduledDisplay}` : scheduledDisplay,
+        duration: item.duration || '60 mins',
+        slot_label: scheduledDisplay,
         status: 'upcoming',
-        scheduled_at: nowIso,
+        scheduled_at: scheduledIso,
         address: deliveryAddress,
         payment_method: paymentMethod,
         payment_id: paymentId,
@@ -169,15 +169,10 @@ export default function PaymentScreen() {
     }
 
     if (!hasFailure) {
-      sendBookingConfirmationWhatsApp({
-        phone,
-        customerName: user?.firstName,
-        serviceNames: cartDetails.map((item) => item.name),
-        totalAmount: total,
-        paymentMethod,
-        scheduledDisplay,
-        address: deliveryAddress,
-      });
+      const hasPass = cartDetails.some((item) => item.id === 'tidara_pass_3');
+      if (hasPass) {
+        useAppStore.getState().setTidaraPass(true, 3);
+      }
     }
 
     return !hasFailure;
@@ -231,7 +226,6 @@ export default function PaymentScreen() {
     }
     setLoading(true);
     try {
-      const remaining = walletBalance - total;
       const saved = await saveBookingToDB('Tidara Wallet');
       if (!saved) {
         showAppAlert(
@@ -241,10 +235,19 @@ export default function PaymentScreen() {
         );
         return;
       }
+      
+      // Atomic wallet debit via server-side RPC function
+      const debitResult = await debitWallet(
+        user!.phone,
+        total,
+        `Booking: ${cartDetails.map((i) => i.name).join(', ')}`
+      );
+
+      const remaining = typeof debitResult.remaining === 'number'
+        ? debitResult.remaining
+        : Math.max(0, walletBalance - total);
+
       setWalletBalance(remaining);
-      if (user?.phone) {
-        await updateUserProfile(user.phone, { wallet_balance: remaining });
-      }
       clearCart();
       showAppAlert(
         'Paid from Tidara Wallet',

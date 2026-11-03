@@ -40,14 +40,17 @@ export default function ProfileSetupScreen() {
     setLoading(true);
     try {
       const canonicalPhone = normalizePhone(user?.phone ?? '');
-      // Do not send client-generated non-UUID timestamp; let Supabase generate a valid UUID
-      const result = await saveUserToDB({
-        id: user?.id ?? '',
+      // Never send empty string or non-UUID id; let Supabase Postgres gen_random_uuid() generate a real UUID
+      const profilePayload: any = {
         phone: canonicalPhone,
         firstName: firstName.trim(),
         lastName: lastName.trim() || undefined,
         email: email.trim() || undefined,
-      });
+      };
+      if (user?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(user.id)) {
+        profilePayload.id = user.id;
+      }
+      const result = await saveUserToDB(profilePayload);
 
       if (!result.success) {
         Alert.alert(
@@ -58,7 +61,7 @@ export default function ProfileSetupScreen() {
       }
 
       setUser({
-        id: result.data?.id || user?.id || '',
+        id: result.data?.id || user?.id || undefined,
         phone: canonicalPhone,
         firstName: firstName.trim(),
         lastName: lastName.trim() || undefined,

@@ -1,6 +1,6 @@
 // Supabase Edge Function: whatsy-otp
-// Securely proxies OTP send, OTP verify, and custom WhatsApp notifications
-// without exposing WHATSY_API_KEY to the mobile client.
+// Securely proxies OTP send & OTP verify requests to Whatsy without exposing WHATSY_API_KEY.
+// Arbitrary notification dispatching is excluded to prevent open WhatsApp relay abuse.
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -15,27 +15,33 @@ Deno.serve(async (req) => {
 
   try {
     const apiKey = Deno.env.get('WHATSY_API_KEY');
-    const baseUrl = Deno.env.get('WHATSY_BASE') || 'https://honeydew-butterfly-241889.hostingersite.com';
+    const baseUrl = Deno.env.get('WHATSY_BASE');
 
-    if (!apiKey) {
+    if (!apiKey || !baseUrl) {
       return new Response(
-        JSON.stringify({ success: false, message: 'WHATSY_API_KEY is not configured on Supabase' }),
+        JSON.stringify({ success: false, message: 'Whatsy credentials not configured on Supabase' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const action = body.action;
     const rawPhone = body.phone || body.recipient;
 
     if (!rawPhone) {
       return new Response(
-        JSON.stringify({ success: false, message: 'Phone number/recipient is required' }),
+        JSON.stringify({ success: false, message: 'Valid phone number is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const cleanDigits = String(rawPhone).replace(/\D/g, '').slice(-10);
+    if (cleanDigits.length !== 10) {
+      return new Response(
+        JSON.stringify({ success: false, message: 'Valid 10-digit Indian mobile number required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // 1. Dispatch OTP
     if (action === 'send') {
@@ -64,10 +70,10 @@ Deno.serve(async (req) => {
 
     // 2. Verify OTP
     if (action === 'verify') {
-      const code = body.code;
-      if (!code) {
+      const code = String(body.code || '').trim();
+      if (!code || code.length !== 6 || !/^\d{6}$/.test(code)) {
         return new Response(
-          JSON.stringify({ success: false, message: 'OTP code is required' }),
+          JSON.stringify({ success: false, message: 'Valid 6-digit OTP code is required' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
@@ -78,7 +84,7 @@ Deno.serve(async (req) => {
           'X-Api-Key': apiKey,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ phone: cleanDigits, code: String(code).trim() }),
+        body: JSON.stringify({ phone: cleanDigits, code }),
       });
 
       const data = await res.json().catch(() => null);
@@ -93,44 +99,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 3. Send WhatsApp Notification Message (Booking confirmation, cancellation, etc.)
-    if (action === 'send-notification' || action === 'send-message') {
-      const message = body.message;
-      if (!message || typeof message !== 'string' || !message.trim()) {
-        return new Response(
-          JSON.stringify({ success: false, message: 'Message text is required' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      const res = await fetch(`${baseUrl}/api/v1/messages`, {
-        method: 'POST',
-        headers: {
-          'X-Api-Key': apiKey,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          recipient: `+91${cleanDigits}`,
-          message: message.trim(),
-        }),
-      });
-
-      const data = await res.json().catch(() => null);
-      const ok = res.ok && data !== null && (data.status === 'queued' || data.status === 'sent');
-
-      return new Response(
-        JSON.stringify({
-          success: ok,
-          messageId: data?.id,
-          status: data?.status || 'unknown',
-          message: ok ? 'WhatsApp notification sent' : (data?.error || 'Failed to send notification'),
-        }),
-        { status: ok ? 200 : (res.status || 500), headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     return new Response(
-      JSON.stringify({ success: false, message: 'Invalid action. Must be "send", "verify", or "send-notification"' }),
+      JSON.stringify({ success: false, message: 'Invalid action. Must be "send" or "verify"' }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err: any) {

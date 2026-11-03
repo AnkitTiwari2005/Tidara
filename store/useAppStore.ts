@@ -33,7 +33,7 @@ const secureStoreAdapter = {
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface User {
-  id: string;
+  id?: string;
   phone: string;
   firstName: string;
   lastName?: string;

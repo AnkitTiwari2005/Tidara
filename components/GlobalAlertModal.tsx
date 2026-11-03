@@ -101,7 +101,12 @@ export default function GlobalAlertModal() {
 
   const handleBackdropPress = () => {
     const cancelBtn = buttons.find((b) => b.style === 'cancel');
-    handleButtonPress(cancelBtn || buttons[0]);
+    if (cancelBtn) {
+      handleButtonPress(cancelBtn);
+    } else {
+      // Dismiss modal safely without triggering destructive or unintended action button
+      hideAlert();
+    }
   };
 
   return (

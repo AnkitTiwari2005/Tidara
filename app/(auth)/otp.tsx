@@ -56,17 +56,28 @@ export default function OTPScreen() {
       return;
     }
 
-    // Handles full paste or SMS autofill
-    if (clean.length > 1) {
+    // If user typed a new digit into an already filled box (e.g. "5" -> "58"), replace only that cell with the latest digit
+    if (clean.length > 1 && clean.length < OTP_LENGTH) {
+      const replacedDigit = clean.slice(-1);
+      const newOtp = [...otp];
+      newOtp[index] = replacedDigit;
+      setOtp(newOtp);
+      if (index < OTP_LENGTH - 1) {
+        inputRefs.current[index + 1]?.focus();
+      }
+      return;
+    }
+
+    // Handles full paste or SMS autofill (all 6 digits)
+    if (clean.length >= OTP_LENGTH) {
       const digits = clean.slice(0, OTP_LENGTH).split('');
       const newOtp = Array(OTP_LENGTH).fill('');
       digits.forEach((d, i) => {
         newOtp[i] = d;
       });
       setOtp(newOtp);
-      const nextFocus = Math.min(digits.length, OTP_LENGTH - 1);
-      inputRefs.current[nextFocus]?.focus();
-      if (digits.length === OTP_LENGTH) handleVerify(digits.join(''));
+      inputRefs.current[OTP_LENGTH - 1]?.focus();
+      handleVerify(digits.join(''));
       return;
     }
 
@@ -111,7 +122,6 @@ export default function OTPScreen() {
         if (!found || !user || !user.firstName || user.firstName.trim().length === 0) {
           // Half-registered: do NOT authenticate until firstName is submitted in profile-setup
           setUser({
-            id: user?.id ?? '',
             phone: canonicalPhone,
             firstName: '',
           });

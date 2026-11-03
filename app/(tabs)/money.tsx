@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, formatCurrency } from '../../constants/colors';
 import { useAppStore, showAppAlert } from '../../store/useAppStore';
 import { createRazorpayOrder, getRazorpayCheckoutHTML } from '../../lib/razorpay';
-import { updateUserProfile, normalizePhone } from '../../lib/supabase';
+import { updateUserProfile, normalizePhone, creditWallet } from '../../lib/supabase';
 import RazorpayWebView from '../../components/RazorpayWebView';
 
 const PRESET_AMOUNTS = [
@@ -94,18 +94,21 @@ export default function MoneyScreen() {
 
   const onPaymentSuccess = async (_data: { paymentId: string }) => {
     setRazorpayHtml(null);
-    const newBalance = walletBalance + totalCredit;
-    setWalletBalance(newBalance);
+    let updatedBalance = walletBalance + totalCredit;
 
     if (user?.phone) {
-      await updateUserProfile(user.phone, { wallet_balance: newBalance });
+      const creditRes = await creditWallet(user.phone, displayAmount, bonusAmount, 'Razorpay Top-up');
+      if (typeof creditRes.balance === 'number') {
+        updatedBalance = creditRes.balance;
+      }
     }
+    setWalletBalance(updatedBalance);
 
     showAppAlert(
       'Wallet Loaded Successfully',
       `${formatCurrency(totalCredit)} has been credited to your wallet${
         bonusAmount > 0 ? ` (includes ${formatCurrency(bonusAmount)} bonus cashback)` : ''
-      }.\n\nUpdated Balance: ${formatCurrency(newBalance)}`,
+      }.\n\nUpdated Balance: ${formatCurrency(updatedBalance)}`,
       'success',
       [{ text: 'Great!' }],
       { icon: 'wallet-outline' }

@@ -156,3 +156,120 @@ CREATE POLICY "Allow anon to read own wallet transactions"
   ON public.wallet_transactions FOR SELECT 
   TO anon 
   USING (true);
+
+-- ====================================================
+-- SECURITY DEFINER RPC Functions
+-- ====================================================
+
+-- 1. Atomic Wallet Debit (Guards against client-side math and overdrafts)
+CREATE OR REPLACE FUNCTION public.debit_wallet(
+  p_phone text,
+  p_amount numeric,
+  p_description text DEFAULT 'Service Booking Payment'
+)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_phone text;
+  v_current numeric;
+  v_remaining numeric;
+BEGIN
+  v_phone := trim(p_phone);
+  IF v_phone IS NULL OR length(v_phone) = 0 THEN
+    RETURN json_build_object('success', false, 'error', 'Invalid phone number');
+  END IF;
+
+  IF p_amount <= 0 THEN
+    RETURN json_build_object('success', false, 'error', 'Debit amount must be greater than zero');
+  END IF;
+
+  SELECT wallet_balance INTO v_current FROM public.users WHERE phone = v_phone FOR UPDATE;
+  
+  IF v_current IS NULL THEN
+    RETURN json_build_object('success', false, 'error', 'User not found');
+  END IF;
+
+  IF v_current < p_amount THEN
+    RETURN json_build_object('success', false, 'error', 'Insufficient wallet balance', 'current', v_current);
+  END IF;
+
+  v_remaining := v_current - p_amount;
+  UPDATE public.users SET wallet_balance = v_remaining WHERE phone = v_phone;
+
+  INSERT INTO public.wallet_transactions (user_phone, amount, type, description)
+  VALUES (v_phone, p_amount, 'debit', p_description);
+
+  RETURN json_build_object('success', true, 'remaining', v_remaining);
+END;
+$$;
+
+-- 2. Atomic Wallet Credit & Top-up with Ledger Entry
+CREATE OR REPLACE FUNCTION public.credit_wallet(
+  p_phone text,
+  p_amount numeric,
+  p_bonus numeric DEFAULT 0,
+  p_description text DEFAULT 'Wallet Top-up'
+)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_phone text;
+  v_total_credit numeric;
+  v_new_balance numeric;
+BEGIN
+  v_phone := trim(p_phone);
+  IF v_phone IS NULL OR length(v_phone) = 0 THEN
+    RETURN json_build_object('success', false, 'error', 'Invalid phone number');
+  END IF;
+
+  v_total_credit := p_amount + COALESCE(p_bonus, 0);
+  IF v_total_credit <= 0 THEN
+    RETURN json_build_object('success', false, 'error', 'Credit amount must be greater than zero');
+  END IF;
+
+  UPDATE public.users 
+  SET wallet_balance = COALESCE(wallet_balance, 0) + v_total_credit 
+  WHERE phone = v_phone
+  RETURNING wallet_balance INTO v_new_balance;
+
+  INSERT INTO public.wallet_transactions (user_phone, amount, type, description)
+  VALUES (v_phone, v_total_credit, 'credit', p_description);
+
+  RETURN json_build_object('success', true, 'balance', v_new_balance);
+END;
+$$;
+
+-- 3. Server-Side Account Deletion
+CREATE OR REPLACE FUNCTION public.delete_user_account(p_phone text)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_phone text;
+  v_deleted int := 0;
+BEGIN
+  v_phone := trim(p_phone);
+  IF v_phone IS NULL OR length(v_phone) = 0 THEN
+    RETURN json_build_object('success', false, 'error', 'Invalid phone number');
+  END IF;
+
+  DELETE FROM public.addresses WHERE user_phone = v_phone;
+  DELETE FROM public.bookings WHERE user_phone = v_phone;
+  DELETE FROM public.wallet_transactions WHERE user_phone = v_phone;
+  DELETE FROM public.users WHERE phone = v_phone;
+  GET DIAGNOSTICS v_deleted = ROW_COUNT;
+
+  RETURN json_build_object('success', true, 'deleted_rows', v_deleted);
+END;
+$$;
+
+-- Grant execution permissions
+GRANT EXECUTE ON FUNCTION public.debit_wallet(text, numeric, text) TO anon;
+GRANT EXECUTE ON FUNCTION public.credit_wallet(text, numeric, numeric, text) TO anon;
+GRANT EXECUTE ON FUNCTION public.delete_user_account(text) TO anon;
+

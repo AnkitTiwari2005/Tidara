@@ -105,7 +105,7 @@ function ServiceCard({ service }: { service: Service }) {
               <TouchableOpacity
                 onPress={(e) => {
                   e.stopPropagation?.();
-                  removeFromCart(service.id);
+                  removeFromCart(service.id, 60);
                 }}
                 style={styles.stepperBtn}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -195,7 +195,7 @@ function FestivePackCard({ pack }: { pack: FestivePack }) {
           {qty > 0 ? (
             <View style={styles.packStepper}>
               <TouchableOpacity
-                onPress={() => removeFromCart(cartItem ? cartItem.serviceId : cartItemId)}
+                onPress={() => removeFromCart(cartItem ? cartItem.serviceId : cartItemId, 60)}
                 style={styles.packStepperBtn}
                 accessibilityRole="button"
                 accessibilityLabel="Decrease pack quantity"
@@ -204,7 +204,7 @@ function FestivePackCard({ pack }: { pack: FestivePack }) {
               </TouchableOpacity>
               <Text style={styles.packStepperVal}>{qty}</Text>
               <TouchableOpacity
-                onPress={() => addToCart(cartItemId, undefined, pack.price)}
+                onPress={() => addToCart(cartItemId, 60, pack.price)}
                 style={styles.packStepperBtn}
                 accessibilityRole="button"
                 accessibilityLabel="Increase pack quantity"
@@ -215,7 +215,7 @@ function FestivePackCard({ pack }: { pack: FestivePack }) {
           ) : (
             <TouchableOpacity
               style={styles.packAddBtn}
-              onPress={() => addToCart(cartItemId, undefined, pack.price)}
+              onPress={() => addToCart(cartItemId, 60, pack.price)}
               activeOpacity={0.85}
               accessibilityRole="button"
               accessibilityLabel={`Book ${pack.name} for ${formatCurrency(pack.price)}`}
