@@ -32,8 +32,12 @@ export default function BookingsScreen() {
       setLoading(false);
       return;
     }
-    const { data } = await getUserBookings(user.phone);
-    setBookings(data ?? []);
+    const { data, error } = await getUserBookings(user.phone);
+    if (!error && data) {
+      setBookings(data);
+    } else {
+      setBookings(data ?? []);
+    }
     setLoading(false);
     setRefreshing(false);
   }, [user?.phone]);
@@ -66,9 +70,14 @@ export default function BookingsScreen() {
           style: 'destructive',
           onPress: async () => {
             setLoading(true);
-            await cancelBooking(booking.id!);
+            const { error } = await cancelBooking(booking.id!);
+            if (error) {
+              setLoading(false);
+              showAppAlert('Error', 'Could not cancel booking. Please try again.', 'error');
+              return;
+            }
             await fetchBookings();
-            showAppAlert('Booking Cancelled', 'Your booking was cancelled. Any prepaid amount will be credited back.', 'info');
+            showAppAlert('Booking Cancelled', 'Your booking was cancelled.', 'info');
           },
         },
       ]

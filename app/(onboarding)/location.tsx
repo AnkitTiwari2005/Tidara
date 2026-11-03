@@ -1,13 +1,8 @@
 import { useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ActivityIndicator,
-} from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Location from 'expo-location';
 import { router } from 'expo-router';
+import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../constants/colors';
 import { useAppStore } from '../../store/useAppStore';
@@ -22,31 +17,41 @@ export default function LocationScreen() {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status === 'granted') {
-          const loc = await Location.getCurrentPositionAsync({
+          // Guard against infinite GPS hanging with 8-second timeout & lastKnown fallback
+          const locPromise = Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Balanced,
           });
-          const results = await Location.reverseGeocodeAsync({
-            latitude: loc.coords.latitude,
-            longitude: loc.coords.longitude,
-          });
+          const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
+          
+          let loc = await Promise.race([locPromise, timeoutPromise]);
+          if (!loc) {
+            loc = await Location.getLastKnownPositionAsync();
+          }
 
-          if (mounted && results.length > 0) {
-            const r = results[0];
-            const parts = [
-              r.name,
-              r.street,
-              r.subregion,
-              r.city,
-              r.region,
-            ].filter(Boolean);
-
-            setLocation({
-              city: r.city ?? r.subregion ?? r.district ?? 'Detected City',
-              address: parts.join(', ') || 'Current Location',
-              lat: loc.coords.latitude,
-              lng: loc.coords.longitude,
-              isServiceable: true,
+          if (loc) {
+            const results = await Location.reverseGeocodeAsync({
+              latitude: loc.coords.latitude,
+              longitude: loc.coords.longitude,
             });
+
+            if (mounted && results.length > 0) {
+              const r = results[0];
+              const parts = [
+                r.name,
+                r.street,
+                r.subregion,
+                r.city,
+                r.region,
+              ].filter(Boolean);
+
+              setLocation({
+                city: r.city ?? r.subregion ?? r.district ?? 'Detected City',
+                address: parts.join(', ') || 'Current Location',
+                lat: loc.coords.latitude,
+                lng: loc.coords.longitude,
+                isServiceable: true,
+              });
+            }
           }
         }
       } catch {

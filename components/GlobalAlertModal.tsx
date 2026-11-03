@@ -99,19 +99,24 @@ export default function GlobalAlertModal() {
     ? alertConfig.buttons
     : [{ text: 'OK', style: 'default' as const }];
 
+  const handleBackdropPress = () => {
+    const cancelBtn = buttons.find((b) => b.style === 'cancel');
+    handleButtonPress(cancelBtn || buttons[0]);
+  };
+
   return (
     <Modal
       transparent
       visible={!!alertConfig}
       animationType="none"
       statusBarTranslucent
-      onRequestClose={hideAlert}
+      onRequestClose={handleBackdropPress}
     >
       <View style={styles.overlay}>
         <TouchableOpacity
           style={StyleSheet.absoluteFill}
           activeOpacity={1}
-          onPress={hideAlert}
+          onPress={handleBackdropPress}
         />
         <Animated.View
           style={[

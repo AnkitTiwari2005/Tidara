@@ -16,6 +16,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
 import { useAppStore, showAppAlert } from '../store/useAppStore';
+import { saveUserAddress, normalizePhone } from '../lib/supabase';
 
 type AddressType = 'Home' | 'Work' | 'Other';
 
@@ -26,7 +27,7 @@ const ADDRESS_TYPES: { key: AddressType; icon: keyof typeof Ionicons.glyphMap; l
 ];
 
 export default function AddAddressScreen() {
-  const { location, addSavedAddress } = useAppStore();
+  const { location, addSavedAddress, user } = useAppStore();
 
   const currentCity = location?.city || 'Gurugram';
   const defaultArea = location?.address && !location.address.startsWith('Flat')
@@ -35,8 +36,8 @@ export default function AddAddressScreen() {
 
   const [flat, setFlat] = useState('');
   const [area, setArea] = useState(defaultArea);
-  const [pincode, setPincode] = useState('');
   const [landmark, setLandmark] = useState('');
+  const [pincode, setPincode] = useState('');
   const [addressType, setAddressType] = useState<AddressType>('Home');
 
   const handleSave = () => {
@@ -71,6 +72,21 @@ export default function AddAddressScreen() {
       lng: location?.lng || 77.0266,
       isDefault: true,
     });
+
+    // Also persist to Supabase addresses table
+    const phone = user?.phone ? normalizePhone(user.phone) : '';
+    if (phone) {
+      saveUserAddress({
+        user_phone: phone,
+        address_type: addressType,
+        flat_no: cleanFlat,
+        landmark: landmark.trim() || undefined,
+        full_address: fullFormatted,
+        city: currentCity,
+        latitude: location?.lat || 28.4595,
+        longitude: location?.lng || 77.0266,
+      }).catch(() => {});
+    }
 
     showAppAlert('Address Saved', `Saved as ${addressType} address and selected for bookings.`, 'success', [
       {

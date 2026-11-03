@@ -39,16 +39,31 @@ export default function ProfileSetupScreen() {
 
     setLoading(true);
     try {
-      const updatedUser = {
-        id: user?.id ?? Date.now().toString(),
-        phone: normalizePhone(user?.phone ?? ''),
+      const canonicalPhone = normalizePhone(user?.phone ?? '');
+      // Do not send client-generated non-UUID timestamp; let Supabase generate a valid UUID
+      const result = await saveUserToDB({
+        id: user?.id ?? '',
+        phone: canonicalPhone,
         firstName: firstName.trim(),
         lastName: lastName.trim() || undefined,
         email: email.trim() || undefined,
-      };
+      });
 
-      await saveUserToDB(updatedUser);
-      setUser(updatedUser);
+      if (!result.success) {
+        Alert.alert(
+          'Save Failed',
+          'Could not save your profile to the cloud. Please check your internet connection and try again.'
+        );
+        return;
+      }
+
+      setUser({
+        id: result.data?.id || user?.id || '',
+        phone: canonicalPhone,
+        firstName: firstName.trim(),
+        lastName: lastName.trim() || undefined,
+        email: email.trim() || undefined,
+      });
       setAuthenticated(true);
       router.replace('/(onboarding)/location');
     } catch {

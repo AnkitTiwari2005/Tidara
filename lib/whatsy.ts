@@ -25,17 +25,18 @@ export async function sendWhatsAppOTP(
     });
     clearTimeout(timeoutId);
 
-    let data: any = {};
+    let data: any = null;
     try {
       data = await res.json();
     } catch {
-      data = { message: res.ok ? 'OTP sent successfully' : 'Gateway temporary unavailable' };
+      data = null;
     }
 
-    const success = res.ok && data.success !== false;
+    // Require positive confirmation; never fail-open on non-JSON or gateway error pages
+    const success = res.ok && data !== null && (data.success === true || data.status === 'success');
     return {
       success,
-      message: data.message ?? (success ? 'OTP sent successfully' : 'Failed to send OTP'),
+      message: data?.message ?? (success ? 'OTP sent successfully' : 'Failed to send OTP'),
     };
   } catch (err: any) {
     clearTimeout(timeoutId);
@@ -70,17 +71,21 @@ export async function verifyWhatsAppOTP(
     });
     clearTimeout(timeoutId);
 
-    let data: any = {};
+    let data: any = null;
     try {
       data = await res.json();
     } catch {
-      data = { message: res.ok ? 'Verified' : 'Verification service error' };
+      data = null;
     }
 
-    const success = res.ok && data.success !== false && data.verified !== false;
+    // Explicit verification check - rejects HTML 200 responses / error pages
+    const success =
+      res.ok &&
+      data !== null &&
+      (data.success === true || data.verified === true || data.status === 'verified');
     return {
       success,
-      message: data.message ?? (success ? 'Code verified' : 'Invalid or expired OTP'),
+      message: data?.message ?? (success ? 'Code verified' : 'Invalid or expired OTP'),
     };
   } catch (err: any) {
     clearTimeout(timeoutId);

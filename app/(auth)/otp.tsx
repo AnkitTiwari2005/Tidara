@@ -48,25 +48,37 @@ export default function OTPScreen() {
   }, [countdown]);
 
   const handleOtpChange = (text: string, index: number) => {
-    if (text.length > 1) {
-      const digits = text.replace(/\D/g, '').slice(0, OTP_LENGTH).split('');
-      const newOtp = Array(OTP_LENGTH).fill('');
-      digits.forEach((d, i) => { newOtp[i] = d; });
+    const clean = text.replace(/\D/g, '');
+    if (!clean) {
+      const newOtp = [...otp];
+      newOtp[index] = '';
       setOtp(newOtp);
-      inputRefs.current[Math.min(digits.length, OTP_LENGTH - 1)]?.focus();
+      return;
+    }
+
+    // Handles full paste or SMS autofill
+    if (clean.length > 1) {
+      const digits = clean.slice(0, OTP_LENGTH).split('');
+      const newOtp = Array(OTP_LENGTH).fill('');
+      digits.forEach((d, i) => {
+        newOtp[i] = d;
+      });
+      setOtp(newOtp);
+      const nextFocus = Math.min(digits.length, OTP_LENGTH - 1);
+      inputRefs.current[nextFocus]?.focus();
       if (digits.length === OTP_LENGTH) handleVerify(digits.join(''));
       return;
     }
 
+    // Single digit typed
     setError(null);
     const newOtp = [...otp];
-    newOtp[index] = text;
+    newOtp[index] = clean.slice(-1);
     setOtp(newOtp);
 
-    if (text && index < OTP_LENGTH - 1) {
+    if (index < OTP_LENGTH - 1) {
       inputRefs.current[index + 1]?.focus();
-    }
-    if (text && index === OTP_LENGTH - 1) {
+    } else {
       const filled = [...newOtp];
       if (filled.every((d) => d !== '')) handleVerify(filled.join(''));
     }
@@ -96,9 +108,10 @@ export default function OTPScreen() {
         const found = await syncUserFromDB(canonicalPhone);
         const { user } = useAppStore.getState();
 
-        if (!found || !user || !user.firstName) {
+        if (!found || !user || !user.firstName || user.firstName.trim().length === 0) {
+          // Half-registered: do NOT authenticate until firstName is submitted in profile-setup
           setUser({
-            id: user?.id || Date.now().toString(),
+            id: user?.id ?? '',
             phone: canonicalPhone,
             firstName: '',
           });
@@ -148,7 +161,7 @@ export default function OTPScreen() {
           onPress={() => router.back()}
           style={styles.backBtn}
           accessibilityRole="button"
-          accessibilityLabel="Go back to mobile entry"
+          accessibilityLabel="Go back"
         >
           <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
         </TouchableOpacity>
@@ -183,7 +196,9 @@ export default function OTPScreen() {
                   error ? styles.otpBoxError : null,
                 ]}
                 keyboardType="number-pad"
-                maxLength={1}
+                maxLength={6}
+                textContentType="oneTimeCode"
+                autoComplete="sms-otp"
                 value={digit}
                 onChangeText={(text) => handleOtpChange(text, index)}
                 onKeyPress={(e) => handleKeyPress(e, index)}

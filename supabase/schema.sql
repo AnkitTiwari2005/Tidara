@@ -11,14 +11,24 @@ CREATE TABLE IF NOT EXISTS public.users (
   first_name text NOT NULL,
   last_name text,
   email text,
-  wallet_balance numeric DEFAULT 0,
+  wallet_balance numeric DEFAULT 0 CHECK (wallet_balance >= 0),
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
 
--- Ensure updated_at exists on existing tables
+-- Ensure updated_at & non-negative wallet check exists on existing tables
 ALTER TABLE public.users 
   ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'chk_wallet_balance_non_negative'
+  ) THEN
+    ALTER TABLE public.users
+      ADD CONSTRAINT chk_wallet_balance_non_negative CHECK (wallet_balance >= 0);
+  END IF;
+END $$;
 
 -- 2. BOOKINGS TABLE
 CREATE TABLE IF NOT EXISTS public.bookings (
@@ -28,7 +38,8 @@ CREATE TABLE IF NOT EXISTS public.bookings (
   service_name text NOT NULL,
   price numeric NOT NULL,
   status text NOT NULL DEFAULT 'upcoming',
-  scheduled_at timestamptz NOT NULL,
+  scheduled_at timestamptz NOT NULL DEFAULT now(),
+  slot_label text,
   address text NOT NULL,
   payment_id text,
   order_id text,
@@ -44,7 +55,12 @@ ALTER TABLE public.bookings
   ADD COLUMN IF NOT EXISTS order_id text,
   ADD COLUMN IF NOT EXISTS payment_method text,
   ADD COLUMN IF NOT EXISTS quantity integer DEFAULT 1,
-  ADD COLUMN IF NOT EXISTS duration text;
+  ADD COLUMN IF NOT EXISTS duration text,
+  ADD COLUMN IF NOT EXISTS slot_label text;
+
+-- Index for phone queries
+CREATE INDEX IF NOT EXISTS idx_bookings_user_phone ON public.bookings(user_phone);
+CREATE INDEX IF NOT EXISTS idx_bookings_created_at ON public.bookings(created_at DESC);
 
 -- 3. SAVED ADDRESSES TABLE
 CREATE TABLE IF NOT EXISTS public.addresses (
@@ -60,13 +76,33 @@ CREATE TABLE IF NOT EXISTS public.addresses (
   created_at timestamptz DEFAULT now()
 );
 
--- 4. ROW-LEVEL SECURITY (RLS) POLICIES
--- Note: Tidara authenticates via custom WhatsApp OTP gateway (anon client),
--- so the policies grant access to the 'anon' role.
+CREATE INDEX IF NOT EXISTS idx_addresses_user_phone ON public.addresses(user_phone);
+
+-- 4. WALLET TRANSACTIONS LEDGER (C4 Recommendation)
+CREATE TABLE IF NOT EXISTS public.wallet_transactions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_phone text NOT NULL,
+  amount numeric NOT NULL,
+  type text NOT NULL CHECK (type IN ('credit', 'debit')),
+  description text NOT NULL,
+  payment_id text,
+  order_id text,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_wallet_tx_user_phone ON public.wallet_transactions(user_phone);
+
+-- 5. ROW-LEVEL SECURITY (RLS) POLICIES
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.addresses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.wallet_transactions ENABLE ROW LEVEL SECURITY;
+
+-- Drop insecure open-delete policies
+DROP POLICY IF EXISTS "Allow anon to delete user" ON public.users;
+DROP POLICY IF EXISTS "Allow anon to delete bookings" ON public.bookings;
 
 -- Users RLS
-ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS "Allow anon to select user" ON public.users;
 CREATE POLICY "Allow anon to select user" 
   ON public.users FOR SELECT 
@@ -86,15 +122,7 @@ CREATE POLICY "Allow anon to update user"
   USING (true)
   WITH CHECK (true);
 
-DROP POLICY IF EXISTS "Allow anon to delete user" ON public.users;
-CREATE POLICY "Allow anon to delete user" 
-  ON public.users FOR DELETE 
-  TO anon 
-  USING (true);
-
 -- Bookings RLS
-ALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS "Allow anon to select bookings" ON public.bookings;
 CREATE POLICY "Allow anon to select bookings" 
   ON public.bookings FOR SELECT 
@@ -114,18 +142,17 @@ CREATE POLICY "Allow anon to update bookings"
   USING (true)
   WITH CHECK (true);
 
-DROP POLICY IF EXISTS "Allow anon to delete bookings" ON public.bookings;
-CREATE POLICY "Allow anon to delete bookings" 
-  ON public.bookings FOR DELETE 
-  TO anon 
-  USING (true);
-
 -- Addresses RLS
-ALTER TABLE public.addresses ENABLE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS "Allow anon to manage addresses" ON public.addresses;
 CREATE POLICY "Allow anon to manage addresses" 
   ON public.addresses FOR ALL 
   TO anon 
   USING (true)
   WITH CHECK (true);
+
+-- Wallet Ledger RLS
+DROP POLICY IF EXISTS "Allow anon to read own wallet transactions" ON public.wallet_transactions;
+CREATE POLICY "Allow anon to read own wallet transactions" 
+  ON public.wallet_transactions FOR SELECT 
+  TO anon 
+  USING (true);

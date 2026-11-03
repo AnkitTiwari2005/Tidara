@@ -8,6 +8,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: false },
 });
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 /**
  * Standardises phone numbers to canonical E.164 (+91XXXXXXXXXX) format
  * across all database tables and queries.
@@ -30,8 +32,8 @@ export interface UserProfile {
   id: string;
   phone: string;
   first_name: string;
-  last_name?: string;
-  email?: string;
+  last_name?: string | null;
+  email?: string | null;
   wallet_balance?: number;
   created_at?: string;
 }
@@ -43,6 +45,13 @@ export async function upsertUserProfile(profile: Partial<UserProfile> & { phone:
       ...profile,
       phone: canonicalPhone,
     };
+
+    // If id is not a valid UUID (e.g. client Date.now() timestamp), omit it
+    // so Postgres's default gen_random_uuid() safely generates a real UUID.
+    if (payload.id && !UUID_REGEX.test(payload.id)) {
+      delete payload.id;
+    }
+
     // Ensure we don't accidentally send undefined properties as literal undefined
     Object.keys(payload).forEach((key) => {
       if (payload[key] === undefined) delete payload[key];
@@ -79,9 +88,14 @@ export async function updateUserProfile(
 ) {
   try {
     const canonicalPhone = normalizePhone(phone);
+    const payload: any = { ...updates };
+    Object.keys(payload).forEach((key) => {
+      if (payload[key] === undefined) delete payload[key];
+    });
+
     const { data, error } = await supabase
       .from('users')
-      .update(updates)
+      .update(payload)
       .eq('phone', canonicalPhone)
       .select()
       .maybeSingle();
@@ -94,7 +108,8 @@ export async function updateUserProfile(
 export async function deleteUserAccount(phone: string) {
   try {
     const canonicalPhone = normalizePhone(phone);
-    // Delete user's bookings first
+    // Delete user's addresses and bookings first to avoid orphan rows
+    await supabase.from('addresses').delete().eq('user_phone', canonicalPhone);
     await supabase.from('bookings').delete().eq('user_phone', canonicalPhone);
     // Delete user row
     const { error } = await supabase.from('users').delete().eq('phone', canonicalPhone);

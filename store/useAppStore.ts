@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import * as SecureStore from 'expo-secure-store';
-import { getUserByPhone, upsertUserProfile, normalizePhone } from '../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import { getUserByPhone, upsertUserProfile, normalizePhone } from '../lib/supabase';
 
-// ─── SecureStore Adapter ──────────────────────────────────────────────────────
+// ─── Custom SecureStore Adapter with Safe Fallback ────────────────────────────
+
 const secureStoreAdapter = {
   getItem: async (name: string): Promise<string | null> => {
     try {
@@ -17,17 +18,19 @@ const secureStoreAdapter = {
     try {
       await SecureStore.setItemAsync(name, value);
     } catch {
-      // Non-fatal if storage fails
+      // Swallowed safely in development/restricted environments
     }
   },
   removeItem: async (name: string): Promise<void> => {
     try {
       await SecureStore.deleteItemAsync(name);
-    } catch {}
+    } catch {
+      // Swallowed safely
+    }
   },
 };
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface User {
   id: string;
@@ -35,6 +38,20 @@ export interface User {
   firstName: string;
   lastName?: string;
   email?: string;
+}
+
+export interface UserAddress {
+  id: string;
+  flat: string;
+  area: string;
+  landmark?: string;
+  pincode?: string;
+  city: string;
+  fullAddress: string;
+  type: 'Home' | 'Work' | 'Other';
+  lat: number;
+  lng: number;
+  isDefault?: boolean;
 }
 
 export interface Location {
@@ -46,24 +63,10 @@ export interface Location {
   type?: 'Home' | 'Work' | 'Other';
 }
 
-export interface UserAddress {
-  id: string;
-  flat: string;
-  area: string;
-  landmark?: string;
-  city: string;
-  pincode?: string;
-  fullAddress: string;
-  type: 'Home' | 'Work' | 'Other';
-  lat: number;
-  lng: number;
-  isDefault?: boolean;
-}
-
 export interface AlertButton {
   text: string;
-  style?: 'default' | 'cancel' | 'destructive';
   onPress?: () => void;
+  style?: 'default' | 'cancel' | 'destructive';
 }
 
 export interface AlertDetailItem {
@@ -133,7 +136,7 @@ interface AppState {
 
   // Cart Actions
   addToCart: (serviceId: string, durationMinutes?: number, unitPrice?: number) => void;
-  removeFromCart: (serviceId: string) => void;
+  removeFromCart: (serviceId: string, durationMinutes?: number) => void;
   clearCart: () => void;
   getCartCount: () => number;
   
@@ -147,7 +150,7 @@ interface AppState {
 
   // ── Supabase sync ────────────────────────────────────────────────────────
   syncUserFromDB: (phone: string) => Promise<boolean>;
-  saveUserToDB: (user: User) => Promise<{ success: boolean; error?: any }>;
+  saveUserToDB: (user: User) => Promise<{ success: boolean; error?: any; data?: any }>;
 }
 
 // ─── Store ────────────────────────────────────────────────────────────────────
@@ -178,7 +181,11 @@ export const useAppStore = create<AppState>()(
       setHasHydrated: (value) => set({ _hasHydrated: value }),
 
       // ── Setters ────────────────────────────────────────────────────────
-      setUser: (user) => set({ user, isAuthenticated: user !== null }),
+      setUser: (user) =>
+        set({
+          user,
+          isAuthenticated: user !== null && Boolean(user.firstName && user.firstName.trim().length > 0),
+        }),
       setAuthenticated: (value) => set({ isAuthenticated: value }),
       setLocation: (location) => set({ location }),
       setWalletBalance: (balance) => set({ walletBalance: balance }),
@@ -245,7 +252,10 @@ export const useAppStore = create<AppState>()(
       // ── Cart ───────────────────────────────────────────────────────────
       addToCart: (serviceId, durationMinutes, unitPrice) => {
         const items = get().cartItems;
-        const existingIndex = items.findIndex((i) => i.serviceId === serviceId);
+        const targetDuration = durationMinutes ?? 60;
+        const existingIndex = items.findIndex(
+          (i) => i.serviceId === serviceId && (i.durationMinutes ?? 60) === targetDuration
+        );
 
         if (existingIndex > -1) {
           const updated = [...items];
@@ -253,7 +263,7 @@ export const useAppStore = create<AppState>()(
           updated[existingIndex] = {
             ...curr,
             quantity: curr.quantity + 1,
-            durationMinutes: durationMinutes ?? curr.durationMinutes,
+            durationMinutes: targetDuration,
             unitPrice: unitPrice ?? curr.unitPrice,
           };
           set({ cartItems: updated });
@@ -264,7 +274,7 @@ export const useAppStore = create<AppState>()(
               {
                 serviceId,
                 quantity: 1,
-                durationMinutes,
+                durationMinutes: targetDuration,
                 unitPrice,
               },
             ],
@@ -272,17 +282,21 @@ export const useAppStore = create<AppState>()(
         }
       },
 
-      removeFromCart: (serviceId) => {
+      removeFromCart: (serviceId, durationMinutes) => {
         const items = get().cartItems;
-        const existing = items.find((i) => i.serviceId === serviceId);
-        if (existing && existing.quantity > 1) {
-          set({
-            cartItems: items.map((i) =>
-              i.serviceId === serviceId ? { ...i, quantity: i.quantity - 1 } : i
-            ),
-          });
-        } else {
-          set({ cartItems: items.filter((i) => i.serviceId !== serviceId) });
+        const targetDuration = durationMinutes ?? 60;
+        const existingIndex = items.findIndex(
+          (i) => i.serviceId === serviceId && (durationMinutes === undefined || (i.durationMinutes ?? 60) === targetDuration)
+        );
+        if (existingIndex > -1) {
+          const existing = items[existingIndex];
+          if (existing.quantity > 1) {
+            const updated = [...items];
+            updated[existingIndex] = { ...existing, quantity: existing.quantity - 1 };
+            set({ cartItems: updated });
+          } else {
+            set({ cartItems: items.filter((_, idx) => idx !== existingIndex) });
+          }
         }
       },
 
@@ -316,10 +330,14 @@ export const useAppStore = create<AppState>()(
           couponApplied: false,
           couponCode: null,
           discountAmount: 0,
+          savedAddresses: [],
+          location: null,
+          hasTidaraPass: false,
+          passVisitsLeft: 0,
         });
       },
 
-      // ── Supabase ───────────────────────────────────────────────────────
+      // ── Supabase sync ────────────────────────────────────────────────────────
       syncUserFromDB: async (phone: string) => {
         try {
           const canonicalPhone = normalizePhone(phone);
@@ -348,14 +366,19 @@ export const useAppStore = create<AppState>()(
         try {
           const canonicalPhone = normalizePhone(user.phone);
           // Only save profile attributes – never overwrite wallet balance from client!
-          const { error } = await upsertUserProfile({
+          const { data, error } = await upsertUserProfile({
             id: user.id,
             phone: canonicalPhone,
             first_name: user.firstName,
             last_name: user.lastName,
             email: user.email,
           });
-          return { success: !error, error };
+          if (data?.id) {
+            set((state) => ({
+              user: state.user ? { ...state.user, id: data.id } : null,
+            }));
+          }
+          return { success: !error && !!data, error, data };
         } catch (err: any) {
           return { success: false, error: err };
         }

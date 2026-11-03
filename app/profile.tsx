@@ -82,24 +82,43 @@ export default function ProfileScreen() {
     }
     if (!user) return;
 
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      Alert.alert('Invalid Email', 'Please provide a valid email format or leave it blank.');
+      return;
+    }
+
     setSaving(true);
     try {
       const canonicalPhone = normalizePhone(user.phone);
-      const updated = {
+      const cleanLastName = lastName.trim() || undefined;
+      const cleanEmail = email.trim() || undefined;
+
+      const { success, error } = await saveUserToDB({
         id: user.id,
         phone: canonicalPhone,
         firstName: firstName.trim(),
-        lastName: lastName.trim() || undefined,
-        email: email.trim() || undefined,
-      };
+        lastName: cleanLastName,
+        email: cleanEmail,
+      });
 
-      setUser(updated);
-      await saveUserToDB(updated);
+      if (!success) {
+        Alert.alert('Save Failed', 'Could not update your profile. Please check your connection.');
+        return;
+      }
 
+      // Explicitly allow clearing optional fields with null in database
       await updateUserProfile(canonicalPhone, {
         first_name: firstName.trim(),
-        last_name: lastName.trim() || undefined,
-        email: email.trim() || undefined,
+        last_name: lastName.trim() ? lastName.trim() : null,
+        email: email.trim() ? email.trim() : null,
+      });
+
+      setUser({
+        id: user.id,
+        phone: canonicalPhone,
+        firstName: firstName.trim(),
+        lastName: cleanLastName,
+        email: cleanEmail,
       });
 
       setEditVisible(false);
@@ -133,7 +152,7 @@ export default function ProfileScreen() {
     }
     Alert.alert(
       'Delete Account & Data?',
-      'This will permanently delete your account, saved addresses, wallet balance, and order history in compliance with DPDP Act 2023. This action cannot be undone.',
+      'This will permanently delete your account, saved addresses, and order history in compliance with DPDP Act 2023. This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -141,9 +160,13 @@ export default function ProfileScreen() {
           style: 'destructive',
           onPress: async () => {
             setSaving(true);
-            await deleteUserAccount(user.phone);
-            logout();
+            const { success, error } = await deleteUserAccount(user.phone);
             setSaving(false);
+            if (!success) {
+              Alert.alert('Error', 'Could not delete account. Please try again.');
+              return;
+            }
+            logout();
             Alert.alert('Account Deleted', 'Your personal account and data have been removed.');
             router.replace('/(auth)/login');
           },

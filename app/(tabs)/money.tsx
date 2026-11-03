@@ -39,7 +39,8 @@ export default function MoneyScreen() {
     ? (isNaN(parsedCustom) ? 0 : parsedCustom)
     : (selectedAmount ?? 0);
 
-  const bonusAmount = displayAmount >= 250 ? Math.round(displayAmount * 0.05) : 0;
+  // Consistent 5% bonus matching preset badges (250 -> 12, 500 -> 25, 1000 -> 50)
+  const bonusAmount = displayAmount >= 250 ? Math.floor(displayAmount * 0.05) : 0;
   const totalCredit = displayAmount + bonusAmount;
 
   const handleAddMoney = async () => {

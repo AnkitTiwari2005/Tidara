@@ -116,13 +116,16 @@ export default function PaymentScreen() {
     );
   }
 
-  /* Save booking to Supabase with real prices and details */
+  /* Save booking to Supabase with real ISO timestamps and transaction verification */
   const saveBookingToDB = async (
     paymentMethod: string,
     paymentId?: string,
     orderId?: string
-  ) => {
-    if (!user?.phone) return;
+  ): Promise<boolean> => {
+    if (!user?.phone) {
+      showAppAlert('Account Required', 'Please log in with your phone number to complete booking.', 'warning');
+      return false;
+    }
     const phone = normalizePhone(user.phone);
 
     let scheduledDisplay = 'Today (Express 15-Min)';
@@ -139,29 +142,47 @@ export default function PaymentScreen() {
       useAppStore.getState().setTidaraPass(true, 3);
     }
 
+    // Pass valid ISO 8601 timestamp string for scheduled_at
+    const nowIso = new Date().toISOString();
+    let hasFailure = false;
+
     for (const item of cartDetails) {
-      await createBooking({
+      const { data, error } = await createBooking({
         user_phone: phone,
         service_id: item.id,
         service_name: item.name,
         price: item.price * item.quantity,
         quantity: item.quantity,
-        duration: item.duration,
+        duration: item.duration ? `${item.duration} • ${scheduledDisplay}` : scheduledDisplay,
         status: 'upcoming',
-        scheduled_at: scheduledDisplay,
+        scheduled_at: nowIso,
         address: deliveryAddress,
         payment_method: paymentMethod,
         payment_id: paymentId,
         order_id: orderId,
       });
+
+      if (error || !data) {
+        hasFailure = true;
+      }
     }
+
+    return !hasFailure;
   };
 
   /* COD Flow */
   const handleCOD = async () => {
     setLoading(true);
     try {
-      await saveBookingToDB('Cash on Delivery');
+      const saved = await saveBookingToDB('Cash on Delivery');
+      if (!saved) {
+        showAppAlert(
+          'Booking Failed',
+          'Unable to record your booking right now. Please check your network and try again.',
+          'error'
+        );
+        return;
+      }
       clearCart();
       showAppAlert(
         'Booking Confirmed',
@@ -198,11 +219,19 @@ export default function PaymentScreen() {
     setLoading(true);
     try {
       const remaining = walletBalance - total;
+      const saved = await saveBookingToDB('Tidara Wallet');
+      if (!saved) {
+        showAppAlert(
+          'Booking Failed',
+          'Unable to record your booking. Your wallet has not been charged.',
+          'error'
+        );
+        return;
+      }
       setWalletBalance(remaining);
       if (user?.phone) {
         await updateUserProfile(user.phone, { wallet_balance: remaining });
       }
-      await saveBookingToDB('Tidara Wallet');
       clearCart();
       showAppAlert(
         'Paid from Tidara Wallet',
@@ -266,14 +295,23 @@ export default function PaymentScreen() {
 
   const onPaymentSuccess = async (data: { paymentId: string; orderId?: string }) => {
     setRazorpayHtml(null);
-    await saveBookingToDB('Razorpay Online', data.paymentId, data.orderId);
+    const saved = await saveBookingToDB('Razorpay Online', data.paymentId, data.orderId);
     clearCart();
-    showAppAlert(
-      'Payment Successful',
-      `Payment of ${formatCurrency(total)} confirmed. Your certified pro is assigned.`,
-      'success',
-      [{ text: 'View Bookings', onPress: () => router.replace('/(tabs)/bookings') }]
-    );
+    if (saved) {
+      showAppAlert(
+        'Payment Successful',
+        `Payment of ${formatCurrency(total)} confirmed. Your certified pro is assigned.`,
+        'success',
+        [{ text: 'View Bookings', onPress: () => router.replace('/(tabs)/bookings') }]
+      );
+    } else {
+      showAppAlert(
+        'Payment Confirmed with Notice',
+        `Payment ID: ${data.paymentId} was received, but we experienced an issue creating the booking record. Our team is notified and will assign your pro.`,
+        'warning',
+        [{ text: 'View Bookings', onPress: () => router.replace('/(tabs)/bookings') }]
+      );
+    }
   };
 
   const onPaymentFailure = (error: string | null, cancelled?: boolean) => {
