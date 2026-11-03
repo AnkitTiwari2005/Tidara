@@ -18,6 +18,7 @@ import { Colors, formatCurrency } from '../../constants/colors';
 import { useAppStore, showAppAlert } from '../../store/useAppStore';
 import { createRazorpayOrder, getRazorpayCheckoutHTML } from '../../lib/razorpay';
 import { updateUserProfile, normalizePhone, creditWallet } from '../../lib/supabase';
+import { sendLocalNotification } from '../../lib/notifications';
 import RazorpayWebView from '../../components/RazorpayWebView';
 
 const PRESET_AMOUNTS = [
@@ -103,6 +104,7 @@ export default function MoneyScreen() {
       }
     }
     setWalletBalance(updatedBalance);
+    sendLocalNotification('Wallet Credited! 💳', `${formatCurrency(totalCredit)} added to your Tidara Wallet.`);
 
     showAppAlert(
       'Wallet Loaded Successfully',

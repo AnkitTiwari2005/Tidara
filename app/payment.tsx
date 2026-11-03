@@ -17,6 +17,7 @@ import { Colors, formatCurrency } from '../constants/colors';
 import { useAppStore, showAppAlert } from '../store/useAppStore';
 import { createRazorpayOrder, getRazorpayCheckoutHTML } from '../lib/razorpay';
 import { createBooking, updateUserProfile, normalizePhone, debitWallet } from '../lib/supabase';
+import { sendLocalNotification } from '../lib/notifications';
 import RazorpayWebView from '../components/RazorpayWebView';
 import { SERVICES, FESTIVE_PACKS, PaymentIcons, BrandImages } from '../constants/services';
 
@@ -172,6 +173,7 @@ export default function PaymentScreen() {
       const hasPass = cartDetails.some((item) => item.id === 'tidara_pass_3');
       if (hasPass) {
         useAppStore.getState().setTidaraPass(true, 3);
+        sendLocalNotification('Booking Confirmed! 🎉', `Your visit for ${cartDetails.map((i) => i.name).join(', ')} is confirmed. Our pro is on the way!`, { screen: 'bookings' });
       }
     }
 

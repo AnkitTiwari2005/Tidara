@@ -38,6 +38,7 @@ export interface User {
   firstName: string;
   lastName?: string;
   email?: string;
+  pushToken?: string | null;
 }
 
 export interface UserAddress {

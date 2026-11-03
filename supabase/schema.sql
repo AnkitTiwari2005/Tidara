@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS public.users (
 
 -- Ensure updated_at & non-negative wallet check exists on existing tables
 ALTER TABLE public.users 
-  ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS push_token text;
 
 DO $$
 BEGIN

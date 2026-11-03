@@ -35,6 +35,7 @@ export interface UserProfile {
   last_name?: string | null;
   email?: string | null;
   wallet_balance?: number;
+  push_token?: string | null;
   created_at?: string;
 }
 

@@ -6,6 +6,8 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
 import { useAppStore } from '../store/useAppStore';
+import { registerForPushNotificationsAsync } from '../lib/notifications';
+import { updateUserProfile } from '../lib/supabase';
 import GlobalAlertModal from '../components/GlobalAlertModal';
 
 // Prevent the splash screen from auto-hiding before store hydration finishes.
@@ -21,6 +23,18 @@ export default function RootLayout() {
     'Lexend-Bold': require('../assets/fonts/Lexend-Bold.ttf'),
     'Lexend-Black': require('../assets/fonts/Lexend-Black.ttf'),
   });
+
+  const user = useAppStore((s) => s.user);
+
+  useEffect(() => {
+    if (_hasHydrated) {
+      registerForPushNotificationsAsync().then((token) => {
+        if (token && user?.phone) {
+          updateUserProfile(user.phone, { push_token: token });
+        }
+      });
+    }
+  }, [_hasHydrated, user?.phone]);
 
   useEffect(() => {
     if (_hasHydrated && fontsLoaded) {

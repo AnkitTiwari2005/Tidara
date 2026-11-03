@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, formatCurrency } from '../../constants/colors';
 import { useAppStore, showAppAlert } from '../../store/useAppStore';
 import { getUserBookings, cancelBooking, Booking } from '../../lib/supabase';
+import { sendLocalNotification } from '../../lib/notifications';
 
 type TabType = 'upcoming' | 'previous';
 
@@ -77,6 +78,7 @@ export default function BookingsScreen() {
               return;
             }
             await fetchBookings();
+            sendLocalNotification('Booking Cancelled', `Your appointment for "${booking.service_name}" was cancelled.`);
             showAppAlert('Booking Cancelled', 'Your booking was cancelled.', 'info');
           },
         },
