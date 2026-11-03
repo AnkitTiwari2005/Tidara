@@ -43,7 +43,7 @@ flowchart TD
     subgraph MobileApp["📱 Mobile Client (Tidara App)"]
         UI["React Native UI / Expo Router"]
         Zustand["Zustand App Store (Local Persistence)"]
-        SupaClient["@supabase/supabase-js (Anon Key Only)"]
+        SupaClient["Supabase JS Client (Anon Key Only)"]
     end
 
     subgraph SupabaseCloud["⚡ Supabase Cloud Platform"]
@@ -59,15 +59,15 @@ flowchart TD
     end
 
     UI --> SupaClient
-    SupaClient -->|Direct Query with RLS| Postgres
-    SupaClient -->|Invoke Functions| EdgeOTP
-    SupaClient -->|Invoke Functions| EdgePay
+    SupaClient -->|"Direct Query (RLS Enforced)"| Postgres
+    SupaClient -->|"Invoke: send / verify / notify"| EdgeOTP
+    SupaClient -->|"Invoke: create-order"| EdgePay
 
-    Vault -.->|Inject WHATSY_API_KEY| EdgeOTP
-    Vault -.->|Inject RAZORPAY_KEY_SECRET| EdgePay
+    Vault -.->|"Inject WHATSY_API_KEY"| EdgeOTP
+    Vault -.->|"Inject RAZORPAY_KEY_SECRET"| EdgePay
 
-    EdgeOTP -->|POST /api/v1/otp & /messages| Whatsy
-    EdgePay -->|POST /v1/orders (Basic Auth)| RazorpayAPI
+    EdgeOTP -->|"POST /api/v1/otp & /messages"| Whatsy
+    EdgePay -->|"POST /v1/orders (Basic Auth)"| RazorpayAPI
 ```
 
 ### Key Security Measures
