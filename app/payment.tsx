@@ -23,6 +23,13 @@ import { SERVICES, FESTIVE_PACKS, PaymentIcons, BrandImages } from '../constants
 
 type PaymentMethod = 'upi' | 'phonepe' | 'gpay' | 'paytm' | 'card' | 'cod' | 'wallet';
 
+const TIME_SLOTS = [
+  '7:00 AM', '8:00 AM', '9:00 AM', '10:00 AM',
+  '11:00 AM', '12:00 PM', '1:00 PM', '2:00 PM',
+  '3:00 PM', '4:00 PM', '5:00 PM', '6:00 PM',
+  '7:00 PM', '8:00 PM',
+];
+
 const UPI_APPS = [
   { key: 'gpay' as PaymentMethod, label: 'Google Pay', image: PaymentIcons.googlepay },
   { key: 'phonepe' as PaymentMethod, label: 'PhonePe', image: PaymentIcons.phonepe },
@@ -46,8 +53,10 @@ export default function PaymentScreen() {
     setWalletBalance,
     location,
     bookingMode,
+    setBookingMode,
     scheduledDays,
     scheduledSlot,
+    setScheduledSlot,
     discountAmount,
   } = useAppStore();
 
@@ -443,6 +452,55 @@ export default function PaymentScreen() {
             <Text style={styles.changeAddressText}>Change</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Scheduled / Recurring Slot Picker (W12) */}
+        {(bookingMode === 'Scheduled' || bookingMode === 'Recurring') && (
+          <View style={styles.slotPickerCard}>
+            <View style={styles.slotPickerHeader}>
+              <Ionicons name="time-outline" size={18} color={Colors.primary} />
+              <Text style={styles.slotPickerTitle}>
+                {bookingMode === 'Recurring' ? 'Recurring Arrival Time' : 'Scheduled Arrival Time'}
+              </Text>
+            </View>
+            {bookingMode === 'Scheduled' && (
+              <View style={styles.bookingModeRow}>
+                {(['Instant', 'Scheduled'] as const).map((mode) => (
+                  <TouchableOpacity
+                    key={mode}
+                    style={[styles.modePill, bookingMode === mode && styles.modePillActive]}
+                    onPress={() => setBookingMode(mode)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: bookingMode === mode }}
+                  >
+                    <Text style={[styles.modePillText, bookingMode === mode && styles.modePillTextActive]}>
+                      {mode === 'Instant' ? '⚡ Express' : '🗓 Scheduled'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+            <View style={styles.slotGrid}>
+              {TIME_SLOTS.map((slot) => (
+                <TouchableOpacity
+                  key={slot}
+                  style={[styles.slotChip, scheduledSlot === slot && styles.slotChipActive]}
+                  onPress={() => setScheduledSlot(slot)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: scheduledSlot === slot }}
+                >
+                  <Text style={[styles.slotChipText, scheduledSlot === slot && styles.slotChipTextActive]}>
+                    {slot}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {bookingMode === 'Recurring' && scheduledDays.length > 0 && (
+              <Text style={styles.slotDaysHint}>
+                Days: {scheduledDays.join(', ')}
+              </Text>
+            )}
+          </View>
+        )}
 
         {/* Tidara Wallet Option */}
         <TouchableOpacity
@@ -893,5 +951,82 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
+  },
+
+  /* ── Slot Picker (W12) ───────────────────────────────────────────────────── */
+  slotPickerCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  slotPickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  slotPickerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  bookingModeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  modePill: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+  },
+  modePillActive: {
+    borderColor: Colors.primary,
+    backgroundColor: '#ECFDF5',
+  },
+  modePillText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  modePillTextActive: {
+    color: Colors.primary,
+  },
+  slotGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  slotChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+  },
+  slotChipActive: {
+    borderColor: Colors.primary,
+    backgroundColor: '#ECFDF5',
+  },
+  slotChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  slotChipTextActive: {
+    color: Colors.primary,
+  },
+  slotDaysHint: {
+    marginTop: 10,
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontStyle: 'italic',
   },
 });

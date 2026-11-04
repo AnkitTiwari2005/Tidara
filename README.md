@@ -231,11 +231,11 @@ This repository has completed a comprehensive code audit and hardening review:
 - **Safe State Transitions:** Disallowed premature authentication flags before user profile registration completes.
 - **ISO 8601 Database Timestamps:** Standardized scheduling fields to valid timestamps, moving human labels to metadata.
 - **Cart Uniqueness Guard:** Resolved duplicate item collisions by scoping uniqueness across `service_id` and duration variants.
-- **Database-Level Wallet Checks:** Added PostgreSQL constraints (`wallet_balance >= 0`) and atomic ledger tables to eliminate double-spend vulnerabilities.
+- **Database-Level Wallet Checks:** Added PostgreSQL constraints (`wallet_balance >= 0`) and atomic ledger tables to reduce double-credit risks.
 
 ---
 
 ## 📄 License
 
 This software is proprietary and confidential.  
-© 2026 **Tidara Technologies Private Limited**. All Rights Reserved.
+© 2026 **Tidara Services Private Limited**. All Rights Reserved.

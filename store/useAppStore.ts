@@ -143,6 +143,7 @@ interface AppState {
   
   // Booking & Coupon Actions
   setBookingMode: (mode: 'Instant' | 'Scheduled' | 'Recurring') => void;
+  setScheduledSlot: (slot: string) => void;
   setRecurringSchedule: (days: string[], slot: string) => void;
   applyCoupon: (code: string, discount: number) => void;
   removeCoupon: () => void;
@@ -314,6 +315,7 @@ export const useAppStore = create<AppState>()(
 
       // ── Booking Schedule & Coupon ──────────────────────────────────────
       setBookingMode: (mode) => set({ bookingMode: mode }),
+      setScheduledSlot: (slot) => set({ scheduledSlot: slot }),
       setRecurringSchedule: (days, slot) =>
         set({ scheduledDays: days, scheduledSlot: slot, bookingMode: 'Recurring' }),
       applyCoupon: (code, discount) =>

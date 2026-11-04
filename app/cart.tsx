@@ -18,6 +18,13 @@ import { useAppStore, showAppAlert } from '../store/useAppStore';
 
 type CartTab = 'Instant' | 'Scheduled' | 'Recurring';
 
+const TIME_SLOTS = [
+  '7:00 AM', '8:00 AM', '9:00 AM', '10:00 AM',
+  '11:00 AM', '12:00 PM', '1:00 PM', '2:00 PM',
+  '3:00 PM', '4:00 PM', '5:00 PM', '6:00 PM',
+  '7:00 PM', '8:00 PM',
+];
+
 const SERVICE_FEE = 10;
 const GST_RATE = 0.05;
 
@@ -29,6 +36,7 @@ export default function CartScreen() {
     bookingMode: savedMode,
     scheduledDays,
     scheduledSlot,
+    setScheduledSlot,
     couponApplied: savedCouponApplied,
     addToCart,
     removeFromCart,
@@ -240,6 +248,48 @@ export default function CartScreen() {
             >
               <Text style={styles.changeScheduleText}>Change</Text>
             </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Scheduled Active Slot Strip (W12) */}
+        {activeTab === 'Scheduled' && (
+          <View style={styles.scheduledBanner}>
+            <View style={styles.recurringBannerLeft}>
+              <Ionicons name="time" size={18} color={Colors.primary} />
+              <View>
+                <Text style={styles.recurringBannerTitle}>
+                  Scheduled Tomorrow
+                </Text>
+                <Text style={styles.recurringBannerSub}>
+                  Arrival Slot: {scheduledSlot || '9:00 AM'}
+                </Text>
+              </View>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.cartSlotScroll}
+            >
+              {TIME_SLOTS.map((slot) => (
+                <TouchableOpacity
+                  key={slot}
+                  style={[
+                    styles.cartSlotChip,
+                    scheduledSlot === slot && styles.cartSlotChipActive,
+                  ]}
+                  onPress={() => setScheduledSlot(slot)}
+                >
+                  <Text
+                    style={[
+                      styles.cartSlotChipText,
+                      scheduledSlot === slot && styles.cartSlotChipTextActive,
+                    ]}
+                  >
+                    {slot}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
         )}
 
@@ -565,6 +615,38 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: Colors.primary,
+  },
+  scheduledBanner: {
+    backgroundColor: '#ECFDF5',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  cartSlotScroll: {
+    paddingTop: 10,
+    gap: 8,
+  },
+  cartSlotChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  cartSlotChipActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  cartSlotChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#065F46',
+  },
+  cartSlotChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   scrollView: { flex: 1, backgroundColor: '#F8FAFC' },
   scrollContent: { padding: 16, gap: 14, paddingBottom: 100 },
