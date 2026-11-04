@@ -20,6 +20,32 @@ import { sendLocalNotification } from '../../lib/notifications';
 
 type TabType = 'upcoming' | 'previous';
 
+const formatBookingSlot = (booking: Booking): string => {
+  if (booking.slot_label && booking.slot_label.trim().length > 0) {
+    return booking.slot_label;
+  }
+  if (!booking.scheduled_at) {
+    return 'Today (Express 15-Min)';
+  }
+  try {
+    const d = new Date(booking.scheduled_at);
+    if (isNaN(d.getTime())) return booking.scheduled_at;
+    const dateStr = d.toLocaleDateString('en-IN', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+    });
+    const timeStr = d.toLocaleTimeString('en-IN', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+    return `${dateStr} @ ${timeStr}`;
+  } catch {
+    return booking.scheduled_at;
+  }
+};
+
 export default function BookingsScreen() {
   const [activeTab, setActiveTab] = useState<TabType>('upcoming');
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -104,7 +130,7 @@ export default function BookingsScreen() {
       {
         icon: 'receipt-outline',
         details: [
-          { iconName: 'calendar-outline', label: 'Slot', value: booking.scheduled_at || 'Today (Express 15-Min)' },
+          { iconName: 'calendar-outline', label: 'Slot / Time', value: formatBookingSlot(booking) },
           { iconName: 'location-outline', label: 'Address', value: booking.address },
           { iconName: 'wallet-outline', label: 'Amount', value: formatCurrency(booking.price) },
           { iconName: 'checkmark-circle-outline', label: 'Status', value: booking.status.toUpperCase() },
@@ -266,9 +292,9 @@ export default function BookingsScreen() {
                       {booking.service_name}
                     </Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }}>
-                      <Ionicons name="calendar-outline" size={13} color={Colors.textMuted} />
+                      <Ionicons name="time-outline" size={13} color={Colors.textMuted} />
                       <Text style={styles.bookingDate}>
-                        {booking.scheduled_at || 'Today'}
+                        {formatBookingSlot(booking)}
                       </Text>
                     </View>
                   </View>

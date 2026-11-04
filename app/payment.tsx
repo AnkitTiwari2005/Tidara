@@ -148,6 +148,16 @@ export default function PaymentScreen() {
     return target;
   };
 
+  const getScheduledDisplay = (): string => {
+    if (bookingMode === 'Recurring') {
+      return `Recurring: ${scheduledDays?.join(', ') || 'Weekly'} @ ${scheduledSlot || '9:00 AM'}`;
+    }
+    if (bookingMode === 'Scheduled') {
+      return `Scheduled Slot: ${scheduledSlot || '9:00 AM'}`;
+    }
+    return 'Today (Express 15-Min)';
+  };
+
   /* Save booking to Supabase with real ISO timestamps and transaction verification */
   const saveBookingToDB = async (
     paymentMethod: string,
@@ -160,14 +170,10 @@ export default function PaymentScreen() {
     }
     const phone = normalizePhone(user.phone);
 
-    let scheduledDisplay = 'Today (Express 15-Min)';
+    const scheduledDisplay = getScheduledDisplay();
     let scheduledIso = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
-    if (bookingMode === 'Recurring') {
-      scheduledDisplay = `Recurring: ${scheduledDays?.join(', ') || 'Weekly'} @ ${scheduledSlot || '9:00 AM'}`;
-      scheduledIso = parseSlotToDate(scheduledSlot, 1).toISOString();
-    } else if (bookingMode === 'Scheduled') {
-      scheduledDisplay = `Scheduled Slot: ${scheduledSlot || 'Standard Slot'}`;
+    if (bookingMode === 'Recurring' || bookingMode === 'Scheduled') {
       scheduledIso = parseSlotToDate(scheduledSlot, 1).toISOString();
     }
 
@@ -205,7 +211,7 @@ export default function PaymentScreen() {
       const serviceSummary = cartDetails.map((i) => i.name).join(', ');
       sendLocalNotification(
         'Booking Confirmed! 🎉',
-        `Your visit for ${serviceSummary} has been booked.`,
+        `Your visit for ${serviceSummary} is confirmed for ${scheduledDisplay}.`,
         { screen: 'bookings' }
       );
     }
@@ -229,7 +235,7 @@ export default function PaymentScreen() {
       clearCart();
       showAppAlert(
         'Booking Confirmed',
-        `Your expert is dispatched.\nPay ${formatCurrency(
+        `Your expert is confirmed for ${getScheduledDisplay()}.\nPay ${formatCurrency(
           total
         )} in cash or UPI once the work is completed to your satisfaction.`,
         'success',
@@ -303,7 +309,7 @@ export default function PaymentScreen() {
       clearCart();
       showAppAlert(
         'Paid from Tidara Wallet',
-        `Payment of ${formatCurrency(total)} was deducted.\nRemaining balance: ${formatCurrency(
+        `Payment of ${formatCurrency(total)} was deducted.\nSlot: ${getScheduledDisplay()}\nRemaining balance: ${formatCurrency(
           remaining
         )}`,
         'success',
@@ -368,7 +374,7 @@ export default function PaymentScreen() {
     if (saved) {
       showAppAlert(
         'Payment Successful',
-        `Payment of ${formatCurrency(total)} confirmed. Your certified pro is assigned.`,
+        `Payment of ${formatCurrency(total)} confirmed for ${getScheduledDisplay()}. Your certified pro is assigned.`,
         'success',
         [{ text: 'View Bookings', onPress: () => router.replace('/(tabs)/bookings') }]
       );
