@@ -16,10 +16,11 @@ CREATE TABLE IF NOT EXISTS public.users (
   updated_at timestamptz DEFAULT now()
 );
 
--- Ensure updated_at & non-negative wallet check exists on existing tables
+-- Ensure updated_at, push_token & avatar_url exist on existing tables
 ALTER TABLE public.users 
   ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now(),
-  ADD COLUMN IF NOT EXISTS push_token text;
+  ADD COLUMN IF NOT EXISTS push_token text,
+  ADD COLUMN IF NOT EXISTS avatar_url text;
 
 DO $$
 BEGIN
