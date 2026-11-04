@@ -12,11 +12,13 @@ CREATE TABLE IF NOT EXISTS public.users (
   last_name text,
   email text,
   wallet_balance numeric DEFAULT 0 CHECK (wallet_balance >= 0),
+  push_token text,
+  avatar_url text,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
 
--- Ensure updated_at, push_token & avatar_url exist on existing tables
+-- Ensure columns exist on legacy installations
 ALTER TABLE public.users 
   ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now(),
   ADD COLUMN IF NOT EXISTS push_token text,
@@ -32,6 +34,23 @@ BEGIN
   END IF;
 END $$;
 
+-- W3/X3: Trigger to enforce wallet_balance = 0 on INSERT regardless of what client passes
+CREATE OR REPLACE FUNCTION public.enforce_zero_wallet_on_insert()
+RETURNS TRIGGER 
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  NEW.wallet_balance := 0;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_enforce_zero_wallet ON public.users;
+CREATE TRIGGER trg_enforce_zero_wallet
+  BEFORE INSERT ON public.users
+  FOR EACH ROW EXECUTE FUNCTION public.enforce_zero_wallet_on_insert();
+
 -- 2. BOOKINGS TABLE
 CREATE TABLE IF NOT EXISTS public.bookings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -39,48 +58,42 @@ CREATE TABLE IF NOT EXISTS public.bookings (
   service_id text NOT NULL,
   service_name text NOT NULL,
   price numeric NOT NULL,
-  status text NOT NULL DEFAULT 'upcoming',
-  scheduled_at timestamptz NOT NULL DEFAULT now(),
+  quantity int DEFAULT 1,
+  duration text DEFAULT '60 mins',
   slot_label text,
+  status text NOT NULL DEFAULT 'upcoming' CHECK (status IN ('upcoming', 'completed', 'cancelled')),
+  scheduled_at timestamptz DEFAULT now(),
   address text NOT NULL,
+  payment_method text,
   payment_id text,
   order_id text,
-  payment_method text,
-  quantity integer DEFAULT 1,
-  duration text,
-  created_at timestamptz DEFAULT now()
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
 );
 
--- Add missing columns to existing bookings table
-ALTER TABLE public.bookings 
+-- Ensure columns exist on legacy installations
+ALTER TABLE public.bookings
+  ADD COLUMN IF NOT EXISTS quantity int DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS duration text DEFAULT '60 mins',
+  ADD COLUMN IF NOT EXISTS slot_label text,
+  ADD COLUMN IF NOT EXISTS payment_method text,
   ADD COLUMN IF NOT EXISTS payment_id text,
   ADD COLUMN IF NOT EXISTS order_id text,
-  ADD COLUMN IF NOT EXISTS payment_method text,
-  ADD COLUMN IF NOT EXISTS quantity integer DEFAULT 1,
-  ADD COLUMN IF NOT EXISTS duration text,
-  ADD COLUMN IF NOT EXISTS slot_label text;
-
--- Index for phone queries
-CREATE INDEX IF NOT EXISTS idx_bookings_user_phone ON public.bookings(user_phone);
-CREATE INDEX IF NOT EXISTS idx_bookings_created_at ON public.bookings(created_at DESC);
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
 
 -- 3. SAVED ADDRESSES TABLE
 CREATE TABLE IF NOT EXISTS public.addresses (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_phone text NOT NULL,
-  address_type text DEFAULT 'Home',
-  flat_no text,
+  type text NOT NULL DEFAULT 'home',
+  address_line text NOT NULL,
   landmark text,
-  full_address text NOT NULL,
-  city text DEFAULT 'Gurugram',
-  latitude double precision,
-  longitude double precision,
+  city text NOT NULL DEFAULT 'Gurugram',
+  is_default boolean DEFAULT false,
   created_at timestamptz DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_addresses_user_phone ON public.addresses(user_phone);
-
--- 4. WALLET TRANSACTIONS LEDGER (C4 Recommendation)
+-- 4. WALLET TRANSACTIONS LEDGER TABLE
 CREATE TABLE IF NOT EXISTS public.wallet_transactions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_phone text NOT NULL,
@@ -88,23 +101,36 @@ CREATE TABLE IF NOT EXISTS public.wallet_transactions (
   type text NOT NULL CHECK (type IN ('credit', 'debit')),
   description text NOT NULL,
   payment_id text,
-  order_id text,
   created_at timestamptz DEFAULT now()
 );
 
+-- Ensure unique payment_id on wallet transactions to prevent replay credits (V3, W2)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_wallet_tx_payment_id 
+  ON public.wallet_transactions(payment_id) 
+  WHERE payment_id IS NOT NULL;
+
+-- 5. PERFORMANCE INDEXES
+CREATE INDEX IF NOT EXISTS idx_users_phone ON public.users(phone);
+CREATE INDEX IF NOT EXISTS idx_bookings_user_phone ON public.bookings(user_phone);
+CREATE INDEX IF NOT EXISTS idx_bookings_status ON public.bookings(status);
+CREATE INDEX IF NOT EXISTS idx_addresses_user_phone ON public.addresses(user_phone);
 CREATE INDEX IF NOT EXISTS idx_wallet_tx_user_phone ON public.wallet_transactions(user_phone);
 
--- 5. ROW-LEVEL SECURITY (RLS) POLICIES
+-- 6. ENABLE ROW LEVEL SECURITY
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.addresses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.wallet_transactions ENABLE ROW LEVEL SECURITY;
 
--- Drop insecure open-delete policies
-DROP POLICY IF EXISTS "Allow anon to delete user" ON public.users;
-DROP POLICY IF EXISTS "Allow anon to delete bookings" ON public.bookings;
+-- 7. COLUMN-LEVEL GRANTS ON USERS (W3, W4, X3)
+-- Anon cannot insert or update wallet_balance or phone directly
+REVOKE INSERT ON public.users FROM anon, public;
+GRANT INSERT (phone, first_name, last_name, email, push_token, avatar_url) ON public.users TO anon;
 
--- Users RLS
+REVOKE UPDATE ON public.users FROM anon, public;
+GRANT UPDATE (first_name, last_name, email, avatar_url, push_token) ON public.users TO anon;
+
+-- 8. ROW LEVEL SECURITY POLICIES
 DROP POLICY IF EXISTS "Allow anon to select user" ON public.users;
 CREATE POLICY "Allow anon to select user" 
   ON public.users FOR SELECT 
@@ -125,24 +151,24 @@ CREATE POLICY "Allow anon to update user"
   WITH CHECK (true);
 
 -- Bookings RLS
-DROP POLICY IF EXISTS "Allow anon to select bookings" ON public.bookings;
-CREATE POLICY "Allow anon to select bookings" 
+DROP POLICY IF EXISTS "Allow anon to select own bookings" ON public.bookings;
+CREATE POLICY "Allow anon to select own bookings" 
   ON public.bookings FOR SELECT 
   TO anon 
   USING (true);
 
-DROP POLICY IF EXISTS "Allow anon to insert bookings" ON public.bookings;
-CREATE POLICY "Allow anon to insert bookings" 
+DROP POLICY IF EXISTS "Allow anon to create bookings" ON public.bookings;
+CREATE POLICY "Allow anon to create bookings" 
   ON public.bookings FOR INSERT 
   TO anon 
   WITH CHECK (true);
 
-DROP POLICY IF EXISTS "Allow anon to update bookings" ON public.bookings;
-CREATE POLICY "Allow anon to update bookings" 
+DROP POLICY IF EXISTS "Allow anon to cancel bookings" ON public.bookings;
+CREATE POLICY "Allow anon to cancel bookings" 
   ON public.bookings FOR UPDATE 
   TO anon 
-  USING (true)
-  WITH CHECK (true);
+  USING (status = 'upcoming')
+  WITH CHECK (status IN ('cancelled', 'upcoming'));
 
 -- Addresses RLS
 DROP POLICY IF EXISTS "Allow anon to manage addresses" ON public.addresses;
@@ -152,27 +178,21 @@ CREATE POLICY "Allow anon to manage addresses"
   USING (true)
   WITH CHECK (true);
 
--- Wallet Ledger RLS
+-- Wallet Ledger RLS (Select only)
 DROP POLICY IF EXISTS "Allow anon to read own wallet transactions" ON public.wallet_transactions;
 CREATE POLICY "Allow anon to read own wallet transactions" 
   ON public.wallet_transactions FOR SELECT 
   TO anon 
   USING (true);
 
--- Ensure unique payment_id on wallet transactions to prevent replay top-ups
-CREATE UNIQUE INDEX IF NOT EXISTS idx_wallet_tx_payment_id 
-  ON public.wallet_transactions(payment_id) 
-  WHERE payment_id IS NOT NULL;
+-- ====================================================================
+-- PRIVILEGED STORED PROCEDURES (SECURITY DEFINER, SERVICE_ROLE ONLY)
+-- ====================================================================
 
--- Restrict column-level UPDATE on public.users so anon key cannot arbitrarily overwrite wallet_balance (V4)
-REVOKE UPDATE ON public.users FROM anon, public;
-GRANT UPDATE (first_name, last_name, email, avatar_url, push_token) ON public.users TO anon;
+-- W5/X4: Drop the legacy 4-argument credit_wallet overload from v3
+DROP FUNCTION IF EXISTS public.credit_wallet(text, numeric, numeric, text);
 
--- ====================================================
--- SECURITY DEFINER RPC Functions (Hardened for V1 & V4)
--- ====================================================
-
--- 1. Atomic Wallet Debit (Guards against client-side math and overdrafts)
+-- 1. Atomic Wallet Debit
 CREATE OR REPLACE FUNCTION public.debit_wallet(
   p_phone text,
   p_amount numeric,
@@ -241,13 +261,11 @@ BEGIN
     RETURN json_build_object('success', false, 'error', 'Invalid phone number');
   END IF;
 
-  -- Ensure user exists before performing credit
   SELECT EXISTS(SELECT 1 FROM public.users WHERE phone = v_phone) INTO v_exists;
   IF NOT v_exists THEN
     RETURN json_build_object('success', false, 'error', 'User not found');
   END IF;
 
-  -- Disallow zero or negative credits
   IF p_amount <= 0 THEN
     RETURN json_build_object('success', false, 'error', 'Credit amount must be greater than zero');
   END IF;
@@ -278,7 +296,84 @@ BEGIN
 END;
 $$;
 
--- 3. Server-Side Account Deletion
+-- 3. Atomic Wallet Booking Transaction (X2: Eliminates Compensating Rollbacks)
+CREATE OR REPLACE FUNCTION public.book_with_wallet(
+  p_phone text,
+  p_total numeric,
+  p_bookings jsonb
+)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_phone text;
+  v_current numeric;
+  v_remaining numeric;
+  v_item jsonb;
+BEGIN
+  v_phone := trim(p_phone);
+  IF v_phone IS NULL OR length(v_phone) = 0 THEN
+    RETURN json_build_object('success', false, 'error', 'Invalid phone number');
+  END IF;
+
+  IF p_total <= 0 THEN
+    RETURN json_build_object('success', false, 'error', 'Booking total must be greater than zero');
+  END IF;
+
+  SELECT wallet_balance INTO v_current FROM public.users WHERE phone = v_phone FOR UPDATE;
+  IF v_current IS NULL THEN
+    RETURN json_build_object('success', false, 'error', 'User not found');
+  END IF;
+
+  IF v_current < p_total THEN
+    RETURN json_build_object('success', false, 'error', 'Insufficient wallet balance', 'current', v_current);
+  END IF;
+
+  -- 1. Deduct wallet balance
+  v_remaining := v_current - p_total;
+  UPDATE public.users SET wallet_balance = v_remaining WHERE phone = v_phone;
+
+  -- 2. Record ledger transaction
+  INSERT INTO public.wallet_transactions (user_phone, amount, type, description)
+  VALUES (v_phone, p_total, 'debit', 'Booking Payment via Tidara Wallet');
+
+  -- 3. Atomically insert all booking items in the same transaction
+  FOR v_item IN SELECT * FROM jsonb_array_elements(p_bookings)
+  LOOP
+    INSERT INTO public.bookings (
+      user_phone,
+      service_id,
+      service_name,
+      price,
+      quantity,
+      duration,
+      slot_label,
+      status,
+      scheduled_at,
+      address,
+      payment_method
+    ) VALUES (
+      v_phone,
+      v_item->>'service_id',
+      v_item->>'service_name',
+      (v_item->>'price')::numeric,
+      COALESCE((v_item->>'quantity')::int, 1),
+      COALESCE(v_item->>'duration', '60 mins'),
+      v_item->>'slot_label',
+      'upcoming',
+      (v_item->>'scheduled_at')::timestamptz,
+      COALESCE(v_item->>'address', 'Confirmed Service Address'),
+      'Tidara Wallet'
+    );
+  END LOOP;
+
+  RETURN json_build_object('success', true, 'remaining', v_remaining);
+END;
+$$;
+
+-- 4. Server-Side Account Deletion
 CREATE OR REPLACE FUNCTION public.delete_user_account(p_phone text)
 RETURNS json
 LANGUAGE plpgsql
@@ -294,7 +389,6 @@ BEGIN
     RETURN json_build_object('success', false, 'error', 'Invalid phone number');
   END IF;
 
-  -- Check user exists before deleting
   IF NOT EXISTS (SELECT 1 FROM public.users WHERE phone = v_phone) THEN
     RETURN json_build_object('success', false, 'error', 'User not found', 'deleted_rows', 0);
   END IF;
@@ -309,13 +403,14 @@ BEGIN
 END;
 $$;
 
--- Revoke direct anon execute on critical financial and account deletion RPCs (V1)
+-- Revoke direct anon execute on critical financial and account deletion RPCs (V1, W1, X4)
 REVOKE EXECUTE ON FUNCTION public.debit_wallet(text, numeric, text) FROM anon, public;
 REVOKE EXECUTE ON FUNCTION public.credit_wallet(text, numeric, numeric, text, text) FROM anon, public;
+REVOKE EXECUTE ON FUNCTION public.book_with_wallet(text, numeric, jsonb) FROM anon, public;
 REVOKE EXECUTE ON FUNCTION public.delete_user_account(text) FROM anon, public;
 
 -- Grant execution permissions exclusively to service_role (invoked via Edge Functions)
 GRANT EXECUTE ON FUNCTION public.debit_wallet(text, numeric, text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.credit_wallet(text, numeric, numeric, text, text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.book_with_wallet(text, numeric, jsonb) TO service_role;
 GRANT EXECUTE ON FUNCTION public.delete_user_account(text) TO service_role;
-

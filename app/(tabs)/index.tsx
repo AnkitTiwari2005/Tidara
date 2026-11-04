@@ -301,8 +301,6 @@ export default function HomeScreen() {
       let matchesCategory = false;
       if (selectedCategory === 'all') {
         matchesCategory = true;
-      } else if (selectedCategory === 'bathroom') {
-        matchesCategory = s.id === '2' || s.name.toLowerCase().includes('bath');
       } else if (selectedCategory === 'more') {
         matchesCategory = s.category === 'exterior';
       } else {
@@ -394,7 +392,7 @@ export default function HomeScreen() {
               accessibilityLabel="Go to Profile"
             >
               <Text style={styles.avatarText}>
-                {user?.firstName ? user.firstName[0].toUpperCase() : 'A'}
+                {user?.firstName ? user.firstName[0].toUpperCase() : 'U'}
               </Text>
             </TouchableOpacity>
           </View>

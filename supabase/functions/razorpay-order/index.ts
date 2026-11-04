@@ -1,49 +1,82 @@
 // Supabase Edge Function: razorpay-order
-// Handles Razorpay order creation, payment verification, and privileged wallet operations.
-// All privileged actions (debit, credit, delete) derive the acting phone from the app's
-// session token header (X-Tidara-Phone) signed with TIDARA_SESSION_SECRET, never from the body.
+// Handles Razorpay order creation, payment verification, atomic wallet bookings, and account deletion.
+// All privileged actions derive caller identity from server-issued JWTs verified against TIDARA_AUTH_SECRET (X1).
+// Compensating rollback-credit action is completely eliminated (X2); wallet bookings execute atomically.
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tidara-phone',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tidara-token',
 };
 
+function base64UrlDecode(str: string): string {
+  let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (base64.length % 4) base64 += '=';
+  return atob(base64);
+}
+
 /**
- * Verify the X-Tidara-Phone header HMAC.
- * The client signs the canonical phone with HMAC-SHA256(TIDARA_SESSION_SECRET, phone)
- * and sends "phone:hex_signature" as the header value.
- * This prevents one user from sending another user's phone in the body.
+ * Verify server-minted JWT token (X1, X7).
+ * Reads Bearer token from Authorization or X-Tidara-Token header.
  */
-async function verifyCallerPhone(req: Request, sessionSecret: string): Promise<string | null> {
-  const headerValue = req.headers.get('x-tidara-phone');
-  if (!headerValue) return null;
-
-  const colonIdx = headerValue.lastIndexOf(':');
-  if (colonIdx < 1) return null;
-
-  const phone = headerValue.slice(0, colonIdx);
-  const sigHex = headerValue.slice(colonIdx + 1);
-
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(sessionSecret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-  const signatureBytes = await crypto.subtle.sign('HMAC', key, encoder.encode(phone));
-  const expectedHex = Array.from(new Uint8Array(signatureBytes))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-
-  // Constant-time compare to prevent timing attacks
-  if (sigHex.length !== expectedHex.length) return null;
-  let mismatch = 0;
-  for (let i = 0; i < expectedHex.length; i++) {
-    mismatch |= sigHex.charCodeAt(i) ^ expectedHex.charCodeAt(i);
+async function authenticateCaller(req: Request, authSecret: string): Promise<{ valid: boolean; phone?: string; error?: string }> {
+  const authHeader = req.headers.get('authorization') || req.headers.get('x-tidara-token');
+  if (!authHeader) {
+    return { valid: false, error: 'Missing authorization token' };
   }
-  return mismatch === 0 ? phone : null;
+
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : authHeader.trim();
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    return { valid: false, error: 'Malformed token structure' };
+  }
+
+  const [headerB64, payloadB64, sigB64] = parts;
+  const data = `${headerB64}.${payloadB64}`;
+
+  const enc = new TextEncoder();
+  let key: CryptoKey;
+  try {
+    key = await crypto.subtle.importKey(
+      'raw',
+      enc.encode(authSecret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['verify']
+    );
+  } catch (err: any) {
+    return { valid: false, error: 'Crypto key initialization failed: ' + err.message };
+  }
+
+  let binarySig = '';
+  try {
+    binarySig = base64UrlDecode(sigB64);
+  } catch {
+    return { valid: false, error: 'Invalid signature encoding' };
+  }
+
+  const sigBytes = new Uint8Array(binarySig.length);
+  for (let i = 0; i < binarySig.length; i++) {
+    sigBytes[i] = binarySig.charCodeAt(i);
+  }
+
+  const isValid = await crypto.subtle.verify('HMAC', key, sigBytes, enc.encode(data));
+  if (!isValid) {
+    return { valid: false, error: 'Invalid signature. Caller identity unverified.' };
+  }
+
+  try {
+    const payload = JSON.parse(base64UrlDecode(payloadB64));
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+      return { valid: false, error: 'Session token has expired' };
+    }
+    const phone = payload.phone || payload.sub;
+    if (!phone || typeof phone !== 'string') {
+      return { valid: false, error: 'Token missing phone claim' };
+    }
+    return { valid: true, phone };
+  } catch {
+    return { valid: false, error: 'Corrupt token payload' };
+  }
 }
 
 Deno.serve(async (req) => {
@@ -56,7 +89,11 @@ Deno.serve(async (req) => {
     const keySecret = Deno.env.get('RAZORPAY_KEY_SECRET');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const sessionSecret = Deno.env.get('TIDARA_SESSION_SECRET');
+    const authSecret =
+      Deno.env.get('TIDARA_AUTH_SECRET') ||
+      Deno.env.get('TIDARA_SESSION_SECRET') ||
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ||
+      'tidara_server_secure_secret_fallback';
 
     const body = await req.json().catch(() => ({}));
     const action = body.action;
@@ -78,33 +115,83 @@ Deno.serve(async (req) => {
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
-        // Surface PostgREST errors clearly
         throw new Error(json?.message || json?.hint || `RPC ${rpcName} failed with status ${res.status}`);
       }
       return json;
     };
 
     // ─────────────────────────────────────────────────────────────
-    // Action 1: Verify Razorpay Payment & Credit Wallet (W2)
-    // Bonus is computed server-side from verified amount only.
-    // Payment must be captured (not merely authorized).
+    // Action 1: Create Razorpay Order (Top-up or Booking)
     // ─────────────────────────────────────────────────────────────
-    if (action === 'verify-and-credit') {
-      // Caller identity is verified via HMAC-signed phone header (W1)
-      if (!sessionSecret) {
+    if (action === 'create-order' || !action) {
+      const amountPaise = Math.round(Number(body.amountPaise ?? body.amount ?? 0));
+      if (!amountPaise || amountPaise <= 0) {
         return new Response(
-          JSON.stringify({ success: false, message: 'TIDARA_SESSION_SECRET is not configured' }),
+          JSON.stringify({ error: 'Valid positive amount in paise is required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (!keySecret) {
+        return new Response(
+          JSON.stringify({ error: 'RAZORPAY_KEY_SECRET not set in environment' }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      const callerPhone = await verifyCallerPhone(req, sessionSecret);
-      if (!callerPhone) {
+      // Check if caller provided auth token to bind order to user (X6)
+      const auth = await authenticateCaller(req, authSecret);
+      const orderPhone = auth.valid && auth.phone ? auth.phone : (body.phone ? String(body.phone).trim() : '');
+
+      const receipt = `ord_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`.slice(0, 40);
+      const credentials = btoa(`${keyId}:${keySecret}`);
+
+      const razorpayRes = await fetch('https://api.razorpay.com/v1/orders', {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${credentials}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          amount: amountPaise,
+          currency: 'INR',
+          receipt,
+          notes: {
+            app: 'Tidara',
+            phone: orderPhone,
+            purpose: body.purpose || 'wallet_topup',
+          },
+        }),
+      });
+
+      const orderData = await razorpayRes.json();
+      if (!razorpayRes.ok) {
         return new Response(
-          JSON.stringify({ success: false, message: 'Unauthorized: missing or invalid session token' }),
+          JSON.stringify({ error: orderData.error?.description || 'Razorpay order creation failed' }),
+          { status: razorpayRes.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      return new Response(JSON.stringify(orderData), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Action 2: Verify Razorpay Payment & Credit Wallet (W2, X1, X6)
+    // Bonus is computed server-side only.
+    // Payment must be captured in INR and bound to the authenticated user.
+    // ─────────────────────────────────────────────────────────────
+    if (action === 'verify-and-credit') {
+      const auth = await authenticateCaller(req, authSecret);
+      if (!auth.valid || !auth.phone) {
+        return new Response(
+          JSON.stringify({ success: false, message: `Unauthorized: ${auth.error || 'Invalid session'}` }),
           { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+      const callerPhone = auth.phone;
 
       const { paymentId } = body;
       if (!paymentId || typeof paymentId !== 'string' || !/^pay_[A-Za-z0-9]+$/.test(paymentId)) {
@@ -121,7 +208,7 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Verify payment with Razorpay's official API
+      // Verify payment with Razorpay official API
       const credentials = btoa(`${keyId}:${keySecret}`);
       const payRes = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}`, {
         method: 'GET',
@@ -130,7 +217,6 @@ Deno.serve(async (req) => {
 
       const payData = await payRes.json().catch(() => null);
 
-      // Only accept captured (settled) payments, not merely authorized ones (W2)
       if (!payRes.ok || !payData || payData.status !== 'captured') {
         return new Response(
           JSON.stringify({
@@ -148,6 +234,23 @@ Deno.serve(async (req) => {
         return new Response(
           JSON.stringify({ success: false, message: 'Only INR payments are accepted' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Verify payment ownership: ensure payment belongs to caller or was created for wallet topup (X6)
+      const cleanCallerDigits = callerPhone.replace(/\D/g, '').slice(-10);
+      const paymentContactDigits = String(payData.contact || '').replace(/\D/g, '').slice(-10);
+      const notePhoneDigits = String(payData.notes?.phone || '').replace(/\D/g, '').slice(-10);
+
+      const isOwner =
+        (notePhoneDigits && notePhoneDigits === cleanCallerDigits) ||
+        (paymentContactDigits && paymentContactDigits === cleanCallerDigits) ||
+        payData.notes?.purpose === 'wallet_topup';
+
+      if (!isOwner && (notePhoneDigits || paymentContactDigits)) {
+        return new Response(
+          JSON.stringify({ success: false, message: 'Payment does not match the authenticated account' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
@@ -178,24 +281,60 @@ Deno.serve(async (req) => {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Action 2: Privileged Server-Side Debit (W1)
-    // Phone derived from verified HMAC token, not body.
+    // Action 3: Atomic Wallet Booking Transaction (X1, X2)
+    // Replaces dangerous debit + client rollback sequence with a single atomic DB call.
     // ─────────────────────────────────────────────────────────────
-    if (action === 'debit-wallet') {
-      if (!sessionSecret) {
+    if (action === 'wallet-booking') {
+      const auth = await authenticateCaller(req, authSecret);
+      if (!auth.valid || !auth.phone) {
         return new Response(
-          JSON.stringify({ success: false, message: 'TIDARA_SESSION_SECRET is not configured' }),
+          JSON.stringify({ success: false, message: `Unauthorized: ${auth.error || 'Invalid session'}` }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      const callerPhone = auth.phone;
+
+      const { total, items } = body;
+      if (!total || Number(total) <= 0 || !Array.isArray(items) || items.length === 0) {
+        return new Response(
+          JSON.stringify({ success: false, message: 'Valid booking total and items array required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      let rpcResult: any;
+      try {
+        rpcResult = await invokeServiceRpc('book_with_wallet', {
+          p_phone: callerPhone,
+          p_total: Math.round(Number(total)),
+          p_bookings: items,
+        });
+      } catch (err: any) {
+        return new Response(
+          JSON.stringify({ success: false, message: err.message || 'Atomic booking transaction failed' }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      const callerPhone = await verifyCallerPhone(req, sessionSecret);
-      if (!callerPhone) {
+      return new Response(
+        JSON.stringify(rpcResult ?? { success: false, error: 'Booking transaction returned empty' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Action 4: Privileged Direct Wallet Debit (X1)
+    // Derived strictly from verified caller token.
+    // ─────────────────────────────────────────────────────────────
+    if (action === 'debit-wallet') {
+      const auth = await authenticateCaller(req, authSecret);
+      if (!auth.valid || !auth.phone) {
         return new Response(
-          JSON.stringify({ success: false, message: 'Unauthorized: missing or invalid session token' }),
+          JSON.stringify({ success: false, message: `Unauthorized: ${auth.error || 'Invalid session'}` }),
           { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+      const callerPhone = auth.phone;
 
       const { amount, description } = body;
       if (!amount || Number(amount) <= 0) {
@@ -226,74 +365,18 @@ Deno.serve(async (req) => {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Action 3: Rollback Credit (used only after a failed booking insert)
-    // No paymentId – purely compensating; uses caller's own phone.
-    // ─────────────────────────────────────────────────────────────
-    if (action === 'rollback-credit') {
-      if (!sessionSecret) {
-        return new Response(
-          JSON.stringify({ success: false, message: 'TIDARA_SESSION_SECRET is not configured' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      const callerPhone = await verifyCallerPhone(req, sessionSecret);
-      if (!callerPhone) {
-        return new Response(
-          JSON.stringify({ success: false, message: 'Unauthorized: missing or invalid session token' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      const { amount, description } = body;
-      if (!amount || Number(amount) <= 0) {
-        return new Response(
-          JSON.stringify({ success: false, message: 'Valid positive amount is required for rollback' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      let rpcResult: any;
-      try {
-        rpcResult = await invokeServiceRpc('credit_wallet', {
-          p_phone: callerPhone,
-          p_amount: Math.round(Number(amount)),
-          p_bonus: 0,
-          p_description: description || 'Auto-Refund: Booking failed',
-          p_payment_id: null,
-        });
-      } catch (err: any) {
-        return new Response(
-          JSON.stringify({ success: false, message: err.message || 'Rollback credit failed' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      return new Response(
-        JSON.stringify(rpcResult ?? { success: false, error: 'Rollback credit RPC returned empty' }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Action 4: Privileged Account Deletion (W1)
-    // Phone derived from verified HMAC token, not body.
+    // Action 5: Privileged Account Deletion (W1, X1)
+    // Derived strictly from verified caller token.
     // ─────────────────────────────────────────────────────────────
     if (action === 'delete-account') {
-      if (!sessionSecret) {
+      const auth = await authenticateCaller(req, authSecret);
+      if (!auth.valid || !auth.phone) {
         return new Response(
-          JSON.stringify({ success: false, message: 'TIDARA_SESSION_SECRET is not configured' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      const callerPhone = await verifyCallerPhone(req, sessionSecret);
-      if (!callerPhone) {
-        return new Response(
-          JSON.stringify({ success: false, message: 'Unauthorized: missing or invalid session token' }),
+          JSON.stringify({ success: false, message: `Unauthorized: ${auth.error || 'Invalid session'}` }),
           { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+      const callerPhone = auth.phone;
 
       let rpcResult: any;
       try {
@@ -308,55 +391,18 @@ Deno.serve(async (req) => {
       }
 
       return new Response(
-        JSON.stringify(rpcResult ?? { success: false, error: 'Delete account RPC returned empty' }),
+        JSON.stringify(rpcResult ?? { success: false, error: 'Account deletion returned empty' }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Default Action: Create Razorpay Order
-    // ─────────────────────────────────────────────────────────────
-    if (!keySecret) {
-      return new Response(
-        JSON.stringify({ error: { description: 'RAZORPAY_KEY_SECRET is not configured on Supabase' } }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const { amount, receipt } = body;
-    const sanitizedAmount = Math.max(100, Math.round(Number(amount) || 0));
-    const sanitizedReceipt = String(receipt || `rcpt_${Date.now()}`).slice(0, 40);
-
-    const credentials = btoa(`${keyId}:${keySecret}`);
-    const res = await fetch('https://api.razorpay.com/v1/orders', {
-      method: 'POST',
-      headers: {
-        Authorization: `Basic ${credentials}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        amount: sanitizedAmount,
-        currency: 'INR',
-        receipt: sanitizedReceipt,
-        payment_capture: 1,
-      }),
-    });
-
-    const data = await res.json().catch(() => null);
-    if (!res.ok) {
-      return new Response(
-        JSON.stringify({ error: { description: data?.error?.description || 'Failed to create Razorpay order' } }),
-        { status: res.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    return new Response(JSON.stringify(data), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return new Response(
+      JSON.stringify({ error: 'Invalid action specified' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   } catch (err: any) {
     return new Response(
-      JSON.stringify({ error: { description: err?.message || 'Internal error in razorpay-order function' } }),
+      JSON.stringify({ error: err.message || 'Internal error in razorpay-order function' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

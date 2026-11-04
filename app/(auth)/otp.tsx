@@ -118,6 +118,9 @@ export default function OTPScreen() {
     try {
       const result = await verifyWhatsAppOTP(canonicalPhone, otpCode);
       if (result.success) {
+        if (result.token) {
+          useAppStore.getState().setAuthToken(result.token);
+        }
         const found = await syncUserFromDB(canonicalPhone);
         const { user } = useAppStore.getState();
 

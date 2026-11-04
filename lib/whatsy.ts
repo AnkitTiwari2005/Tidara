@@ -34,7 +34,7 @@ export async function sendWhatsAppOTP(
 export async function verifyWhatsAppOTP(
   phone: string,
   code: string
-): Promise<{ success: boolean; message?: string }> {
+): Promise<{ success: boolean; message?: string; token?: string; phone?: string }> {
   const cleanDigits = phone.replace(/\D/g, '').slice(-10);
 
   try {
@@ -53,6 +53,8 @@ export async function verifyWhatsAppOTP(
     return {
       success,
       message: data?.message ?? (success ? 'Code verified' : 'Invalid or expired OTP'),
+      token: data?.token,
+      phone: data?.phone,
     };
   } catch (err: any) {
     return { success: false, message: 'Network error. Please try again.' };

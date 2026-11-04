@@ -13,17 +13,12 @@ import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, formatCurrency } from '../constants/colors';
-import { SERVICES, FESTIVE_PACKS, BrandImages } from '../constants/services';
+import { SERVICES, FESTIVE_PACKS, BrandImages, TIME_SLOTS } from '../constants/services';
 import { useAppStore, showAppAlert } from '../store/useAppStore';
 
 type CartTab = 'Instant' | 'Scheduled' | 'Recurring';
 
-const TIME_SLOTS = [
-  '7:00 AM', '8:00 AM', '9:00 AM', '10:00 AM',
-  '11:00 AM', '12:00 PM', '1:00 PM', '2:00 PM',
-  '3:00 PM', '4:00 PM', '5:00 PM', '6:00 PM',
-  '7:00 PM', '8:00 PM',
-];
+
 
 const SERVICE_FEE = 10;
 const GST_RATE = 0.05;
@@ -35,6 +30,8 @@ export default function CartScreen() {
     user,
     bookingMode: savedMode,
     scheduledDays,
+    scheduledDate,
+    setScheduledDate,
     scheduledSlot,
     setScheduledSlot,
     couponApplied: savedCouponApplied,
@@ -251,20 +248,45 @@ export default function CartScreen() {
           </View>
         )}
 
-        {/* Scheduled Active Slot Strip (W12) */}
+        {/* Scheduled Active Slot Strip (W12, X8) */}
         {activeTab === 'Scheduled' && (
           <View style={styles.scheduledBanner}>
             <View style={styles.recurringBannerLeft}>
               <Ionicons name="time" size={18} color={Colors.primary} />
               <View>
                 <Text style={styles.recurringBannerTitle}>
-                  Scheduled Tomorrow
+                  Scheduled for {scheduledDate || 'Tomorrow'}
                 </Text>
                 <Text style={styles.recurringBannerSub}>
                   Arrival Slot: {scheduledSlot || '9:00 AM'}
                 </Text>
               </View>
             </View>
+
+            {/* Date selection row */}
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+              {['Today', 'Tomorrow', 'Day After'].map((d) => (
+                <TouchableOpacity
+                  key={d}
+                  style={[
+                    styles.cartSlotChip,
+                    (scheduledDate || 'Tomorrow') === d && styles.cartSlotChipActive,
+                  ]}
+                  onPress={() => setScheduledDate(d)}
+                >
+                  <Text
+                    style={[
+                      styles.cartSlotChipText,
+                      (scheduledDate || 'Tomorrow') === d && styles.cartSlotChipTextActive,
+                    ]}
+                  >
+                    {d}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Time slots scroll */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}

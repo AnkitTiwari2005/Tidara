@@ -16,19 +16,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, formatCurrency } from '../constants/colors';
 import { useAppStore, showAppAlert } from '../store/useAppStore';
 import { createRazorpayOrder, getRazorpayCheckoutHTML } from '../lib/razorpay';
-import { createBooking, updateUserProfile, normalizePhone, debitWallet, creditWallet } from '../lib/supabase';
+import { createBooking, updateUserProfile, normalizePhone, debitWallet, creditWallet, bookWithWallet } from '../lib/supabase';
 import { sendLocalNotification } from '../lib/notifications';
 import RazorpayWebView from '../components/RazorpayWebView';
-import { SERVICES, FESTIVE_PACKS, PaymentIcons, BrandImages } from '../constants/services';
+import { SERVICES, FESTIVE_PACKS, PaymentIcons, BrandImages, TIME_SLOTS } from '../constants/services';
 
 type PaymentMethod = 'upi' | 'phonepe' | 'gpay' | 'paytm' | 'card' | 'cod' | 'wallet';
 
-const TIME_SLOTS = [
-  '7:00 AM', '8:00 AM', '9:00 AM', '10:00 AM',
-  '11:00 AM', '12:00 PM', '1:00 PM', '2:00 PM',
-  '3:00 PM', '4:00 PM', '5:00 PM', '6:00 PM',
-  '7:00 PM', '8:00 PM',
-];
+
 
 const UPI_APPS = [
   { key: 'gpay' as PaymentMethod, label: 'Google Pay', image: PaymentIcons.googlepay },
@@ -55,6 +50,8 @@ export default function PaymentScreen() {
     bookingMode,
     setBookingMode,
     scheduledDays,
+    scheduledDate,
+    setScheduledDate,
     scheduledSlot,
     setScheduledSlot,
     discountAmount,
@@ -126,10 +123,16 @@ export default function PaymentScreen() {
     );
   }
 
-  /* Parse slot like '9:00 AM' or '2:00 PM' into an accurate future Date (V8) */
-  const parseSlotToDate = (slot?: string | null, daysAhead: number = 1): Date => {
+  /* Parse slot into real future Date respecting chosen date and time (V8, X8) */
+  const parseSlotToDate = (slot?: string | null, dateChoice: string = 'Tomorrow'): Date => {
     const target = new Date();
-    target.setDate(target.getDate() + daysAhead);
+    if (dateChoice === 'Tomorrow') {
+      target.setDate(target.getDate() + 1);
+    } else if (dateChoice === 'Day After') {
+      target.setDate(target.getDate() + 2);
+    }
+    // If 'Today', target remains current day
+
     if (!slot) {
       target.setHours(9, 0, 0, 0);
       return target;
@@ -148,12 +151,18 @@ export default function PaymentScreen() {
     return target;
   };
 
+  const isSlotInPast = (slot: string, dateChoice?: string | null): boolean => {
+    if (dateChoice !== 'Today') return false;
+    const slotDate = parseSlotToDate(slot, 'Today');
+    return slotDate.getTime() <= Date.now() + 30 * 60 * 1000;
+  };
+
   const getScheduledDisplay = (): string => {
     if (bookingMode === 'Recurring') {
       return `Recurring: ${scheduledDays?.join(', ') || 'Weekly'} @ ${scheduledSlot || '9:00 AM'}`;
     }
     if (bookingMode === 'Scheduled') {
-      return `Scheduled Slot: ${scheduledSlot || '9:00 AM'}`;
+      return `${scheduledDate || 'Tomorrow'} @ ${scheduledSlot || '9:00 AM'}`;
     }
     return 'Today (Express 15-Min)';
   };
@@ -173,8 +182,10 @@ export default function PaymentScreen() {
     const scheduledDisplay = getScheduledDisplay();
     let scheduledIso = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
-    if (bookingMode === 'Recurring' || bookingMode === 'Scheduled') {
-      scheduledIso = parseSlotToDate(scheduledSlot, 1).toISOString();
+    if (bookingMode === 'Scheduled') {
+      scheduledIso = parseSlotToDate(scheduledSlot, scheduledDate || 'Tomorrow').toISOString();
+    } else if (bookingMode === 'Recurring') {
+      scheduledIso = parseSlotToDate(scheduledSlot, 'Tomorrow').toISOString();
     }
 
     const deliveryAddress = location?.address || 'Confirmed Service Address';
@@ -459,40 +470,101 @@ export default function PaymentScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Scheduled / Recurring Slot Picker (W12) */}
-        {(bookingMode === 'Scheduled' || bookingMode === 'Recurring') && (
+        {/* Booking Mode & Slot Selection Card (W12, X8) */}
+        {bookingMode !== 'Recurring' ? (
           <View style={styles.slotPickerCard}>
             <View style={styles.slotPickerHeader}>
               <Ionicons name="time-outline" size={18} color={Colors.primary} />
-              <Text style={styles.slotPickerTitle}>
-                {bookingMode === 'Recurring' ? 'Recurring Arrival Time' : 'Scheduled Arrival Time'}
-              </Text>
+              <Text style={styles.slotPickerTitle}>Delivery Mode & Time</Text>
             </View>
+
+            {/* Persistent Express / Scheduled Toggle (X8) */}
+            <View style={styles.bookingModeRow}>
+              {(['Instant', 'Scheduled'] as const).map((mode) => (
+                <TouchableOpacity
+                  key={mode}
+                  style={[styles.modePill, bookingMode === mode && styles.modePillActive]}
+                  onPress={() => setBookingMode(mode)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: bookingMode === mode }}
+                >
+                  <Text style={[styles.modePillText, bookingMode === mode && styles.modePillTextActive]}>
+                    {mode === 'Instant' ? '⚡ 15-Min Express' : '🗓 Scheduled Slot'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* When Scheduled is active, show Date Chips & Time Slot Chips */}
             {bookingMode === 'Scheduled' && (
-              <View style={styles.bookingModeRow}>
-                {(['Instant', 'Scheduled'] as const).map((mode) => (
-                  <TouchableOpacity
-                    key={mode}
-                    style={[styles.modePill, bookingMode === mode && styles.modePillActive]}
-                    onPress={() => setBookingMode(mode)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: bookingMode === mode }}
-                  >
-                    <Text style={[styles.modePillText, bookingMode === mode && styles.modePillTextActive]}>
-                      {mode === 'Instant' ? '⚡ Express' : '🗓 Scheduled'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <>
+                <Text style={styles.slotSectionSubtitle}>Select Date</Text>
+                <View style={styles.dateChipsRow}>
+                  {['Today', 'Tomorrow', 'Day After'].map((d) => (
+                    <TouchableOpacity
+                      key={d}
+                      style={[
+                        styles.dateChip,
+                        (scheduledDate || 'Tomorrow') === d && styles.dateChipActive,
+                      ]}
+                      onPress={() => setScheduledDate(d)}
+                    >
+                      <Text
+                        style={[
+                          styles.dateChipText,
+                          (scheduledDate || 'Tomorrow') === d && styles.dateChipTextActive,
+                        ]}
+                      >
+                        {d}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={styles.slotSectionSubtitle}>Select Arrival Slot</Text>
+                <View style={styles.slotGrid}>
+                  {TIME_SLOTS.map((slot) => {
+                    const disabled = isSlotInPast(slot, scheduledDate);
+                    const selected = scheduledSlot === slot;
+                    return (
+                      <TouchableOpacity
+                        key={slot}
+                        disabled={disabled}
+                        style={[
+                          styles.slotChip,
+                          selected && styles.slotChipActive,
+                          disabled && styles.slotChipDisabled,
+                        ]}
+                        onPress={() => setScheduledSlot(slot)}
+                      >
+                        <Text
+                          style={[
+                            styles.slotChipText,
+                            selected && styles.slotChipTextActive,
+                            disabled && styles.slotChipTextDisabled,
+                          ]}
+                        >
+                          {slot}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
             )}
+          </View>
+        ) : (
+          <View style={styles.slotPickerCard}>
+            <View style={styles.slotPickerHeader}>
+              <Ionicons name="repeat" size={18} color={Colors.primary} />
+              <Text style={styles.slotPickerTitle}>Recurring Arrival Time</Text>
+            </View>
             <View style={styles.slotGrid}>
               {TIME_SLOTS.map((slot) => (
                 <TouchableOpacity
                   key={slot}
                   style={[styles.slotChip, scheduledSlot === slot && styles.slotChipActive]}
                   onPress={() => setScheduledSlot(slot)}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: scheduledSlot === slot }}
                 >
                   <Text style={[styles.slotChipText, scheduledSlot === slot && styles.slotChipTextActive]}>
                     {slot}
@@ -500,9 +572,9 @@ export default function PaymentScreen() {
                 </TouchableOpacity>
               ))}
             </View>
-            {bookingMode === 'Recurring' && scheduledDays.length > 0 && (
+            {scheduledDays.length > 0 && (
               <Text style={styles.slotDaysHint}>
-                Days: {scheduledDays.join(', ')}
+                Scheduled on: {scheduledDays.join(', ')}
               </Text>
             )}
           </View>
@@ -1034,5 +1106,46 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textSecondary,
     fontStyle: 'italic',
+  },
+  slotSectionSubtitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  dateChipsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 6,
+  },
+  dateChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+  },
+  dateChipActive: {
+    borderColor: Colors.primary,
+    backgroundColor: '#ECFDF5',
+  },
+  dateChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  dateChipTextActive: {
+    color: Colors.primary,
+    fontWeight: '700',
+  },
+  slotChipDisabled: {
+    opacity: 0.35,
+    backgroundColor: '#F1F5F9',
+    borderColor: '#E2E8F0',
+  },
+  slotChipTextDisabled: {
+    color: Colors.textMuted,
   },
 });

@@ -51,7 +51,7 @@ export interface Service {
   iconName: keyof typeof Ionicons.glyphMap;
   iconBg: string;
   iconColor: string;
-  category: 'cleaning' | 'kitchen' | 'laundry' | 'exterior';
+  category: 'cleaning' | 'kitchen' | 'bathroom' | 'laundry' | 'exterior';
   description: string;
   duration: string;
   imageUrl: any;
@@ -82,6 +82,13 @@ export interface HelpTopic {
   iconBg: string;
   answer: string;
 }
+
+export const TIME_SLOTS = [
+  '7:00 AM', '8:00 AM', '9:00 AM', '10:00 AM',
+  '11:00 AM', '12:00 PM', '1:00 PM', '2:00 PM',
+  '3:00 PM', '4:00 PM', '5:00 PM', '6:00 PM',
+  '7:00 PM', '8:00 PM',
+];
 
 export const CATEGORIES: { id: string; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { id: 'all', label: 'All Services', icon: 'grid-outline' },
@@ -118,7 +125,7 @@ export const SERVICES: Service[] = [
     iconName: 'water-outline',
     iconBg: '#ECFDF5',
     iconColor: '#059669',
-    category: 'cleaning',
+    category: 'bathroom',
     description: 'Tile descaling, stain removal, mirror buffing and disinfection.',
     duration: '45 mins',
     imageUrl: ServiceImages.bathroom,

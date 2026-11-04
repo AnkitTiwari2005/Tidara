@@ -1,13 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
+import { useAppStore } from '../store/useAppStore';
 
 const SUPABASE_URL = 'https://nkhtxqomvxjqnfwvmjnv.supabase.co';
 const SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5raHR4cW9tdnhqcW5md3Ztam52Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMzMjI4NDMsImV4cCI6MjEwODg5ODg0M30.10tajWbgcvwzfXeJxBydA8eie5hR7pfjliEfyrxM4Js';
-
-// TIDARA_SESSION_SECRET: a 32-byte hex value embedded at build time.
-// Generate once: node -e "require('crypto').randomBytes(32).toString('hex')|cl"
-// Set identically in Supabase Secrets as TIDARA_SESSION_SECRET.
-const SESSION_SECRET = '382a026014863ffe311d8413799c04f3b418de244673310e4202f6fb7228f1f5';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: false },
@@ -30,24 +26,15 @@ export function normalizePhone(phone: string): string {
 }
 
 /**
- * Build the X-Tidara-Phone header value: "phone:HMAC_HEX"
- * The Edge Function verifies this to ensure the caller owns the phone in the request (W1).
+ * Retrieve authorization headers with the server-minted session token (X1).
+ * Zero client-side secrets: runs safely on React Native Hermes without crypto polyfills (X5).
  */
-async function buildSessionHeader(phone: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const keyBytes = encoder.encode(SESSION_SECRET);
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    keyBytes,
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-  const signatureBytes = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(phone));
-  const sigHex = Array.from(new Uint8Array(signatureBytes))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-  return `${phone}:${sigHex}`;
+function getAuthHeaders(): Record<string, string> {
+  const token = useAppStore.getState()?.authToken || '';
+  return {
+    'Authorization': token ? `Bearer ${token}` : '',
+    'X-Tidara-Token': token,
+  };
 }
 
 // ----------------------------------------------------
@@ -68,29 +55,30 @@ export interface UserProfile {
 /**
  * Creates a new user row (INSERT only, no upsert).
  * This is used only for new-user sign-up. Never includes wallet_balance.
- * Fixes W4: upsert was broken by column-level grant restrictions on phone.
  */
 export async function insertUserProfile(
-  profile: { phone: string; first_name: string; last_name?: string; email?: string; id?: string }
+  profile: Pick<UserProfile, 'phone' | 'first_name'> &
+    Partial<Pick<UserProfile, 'last_name' | 'email' | 'push_token' | 'id'>>
 ) {
   try {
     const canonicalPhone = normalizePhone(profile.phone);
-    const payload: any = {
+    const insertPayload: Record<string, any> = {
       phone: canonicalPhone,
       first_name: profile.first_name,
     };
-    if (profile.last_name) payload.last_name = profile.last_name;
-    if (profile.email) payload.email = profile.email;
-    // Only include id if it is a valid UUID (server generates uuid if omitted)
+    if (profile.last_name !== undefined) insertPayload.last_name = profile.last_name;
+    if (profile.email !== undefined) insertPayload.email = profile.email;
+    if (profile.push_token !== undefined) insertPayload.push_token = profile.push_token;
     if (profile.id && UUID_REGEX.test(profile.id)) {
-      payload.id = profile.id;
+      insertPayload.id = profile.id;
     }
 
     const { data, error } = await supabase
       .from('users')
-      .insert(payload)
+      .insert(insertPayload)
       .select()
       .maybeSingle();
+
     return { data, error };
   } catch (err: any) {
     return { data: null, error: err };
@@ -98,31 +86,27 @@ export async function insertUserProfile(
 }
 
 /**
- * Updates an existing user's profile columns (never phone or wallet_balance).
- * Used for profile edits and push token sync.
- * Fixes W4: by never sending phone in the UPDATE payload.
+ * Updates allowed columns on an existing user row (UPDATE only).
+ * Never touches phone or wallet_balance.
  */
 export async function updateUserProfile(
   phone: string,
-  updates: Partial<UserProfile>
+  updates: Partial<Omit<UserProfile, 'phone' | 'wallet_balance' | 'id' | 'created_at'>>
 ) {
   try {
     const canonicalPhone = normalizePhone(phone);
-    const payload: any = { ...updates };
-    // Never allow client to overwrite phone or wallet_balance via UPDATE
-    delete payload.phone;
-    delete payload.wallet_balance;
-    delete payload.id;
-    Object.keys(payload).forEach((key) => {
-      if (payload[key] === undefined) delete payload[key];
-    });
+    const safeUpdates: Record<string, any> = { ...updates };
+    delete safeUpdates.phone;
+    delete safeUpdates.wallet_balance;
+    delete safeUpdates.id;
 
     const { data, error } = await supabase
       .from('users')
-      .update(payload)
+      .update(safeUpdates)
       .eq('phone', canonicalPhone)
       .select()
       .maybeSingle();
+
     return { data, error };
   } catch (err: any) {
     return { data: null, error: err };
@@ -130,37 +114,33 @@ export async function updateUserProfile(
 }
 
 /**
- * @deprecated Use insertUserProfile for new users, updateUserProfile for edits.
- * Kept for backward compatibility in saveUserToDB but routes to the correct path.
+ * Safe upsert that never includes phone in an ON CONFLICT DO UPDATE SET list (W4).
  */
-export async function upsertUserProfile(
-  profile: Partial<UserProfile> & { phone: string; first_name: string }
-) {
-  // If the user might already exist (we don't know), try UPDATE first, INSERT if 0 rows updated
+export async function upsertUserProfile(profile: Partial<UserProfile> & { phone: string }) {
   try {
     const canonicalPhone = normalizePhone(profile.phone);
-    const updatePayload: any = {
-      first_name: profile.first_name,
-    };
+    const updatePayload: Record<string, any> = {};
+    if (profile.first_name !== undefined) updatePayload.first_name = profile.first_name;
     if (profile.last_name !== undefined) updatePayload.last_name = profile.last_name;
     if (profile.email !== undefined) updatePayload.email = profile.email;
     if (profile.push_token !== undefined) updatePayload.push_token = profile.push_token;
 
-    const { data: updateData, error: updateErr } = await supabase
+    // Try UPDATE first
+    const { data: updatedData, error: updateErr } = await supabase
       .from('users')
       .update(updatePayload)
       .eq('phone', canonicalPhone)
       .select()
       .maybeSingle();
 
-    if (!updateErr && updateData) {
-      return { data: updateData, error: null };
+    if (updatedData) {
+      return { data: updatedData, error: null };
     }
 
     // No existing row found — INSERT as new user
     return await insertUserProfile({
       phone: canonicalPhone,
-      first_name: profile.first_name,
+      first_name: profile.first_name || 'User',
       last_name: profile.last_name ?? undefined,
       email: profile.email ?? undefined,
       id: profile.id,
@@ -191,10 +171,9 @@ export async function deleteUserAccount(phone: string): Promise<{ success: boole
       return { success: false, error: new Error('Invalid phone number') };
     }
 
-    const sessionHeader = await buildSessionHeader(canonicalPhone);
     const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('razorpay-order', {
       body: { action: 'delete-account' },
-      headers: { 'x-tidara-phone': sessionHeader },
+      headers: getAuthHeaders(),
     });
 
     if (edgeErr) {
@@ -222,14 +201,13 @@ export async function debitWallet(
       return { success: false, error: 'Valid phone and positive amount are required' };
     }
 
-    const sessionHeader = await buildSessionHeader(canonicalPhone);
     const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('razorpay-order', {
       body: {
         action: 'debit-wallet',
         amount: Math.round(amount),
         description: description || 'Service Booking Payment',
       },
-      headers: { 'x-tidara-phone': sessionHeader },
+      headers: getAuthHeaders(),
     });
 
     if (edgeErr) {
@@ -246,6 +224,10 @@ export async function debitWallet(
   }
 }
 
+/**
+ * Top-up credit: verified strictly through captured Razorpay payment (W2, X1, X2, X6).
+ * Client bonus and arbitrary unverified credits are rejected.
+ */
 export async function creditWallet(
   phone: string,
   amount: number,
@@ -259,37 +241,16 @@ export async function creditWallet(
       return { success: false, error: 'Valid phone and positive amount are required' };
     }
 
-    const sessionHeader = await buildSessionHeader(canonicalPhone);
-
-    if (paymentId) {
-      // Verify-and-credit: server verifies the Razorpay payment and computes bonus itself (W2)
-      const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('razorpay-order', {
-        body: {
-          action: 'verify-and-credit',
-          paymentId,
-        },
-        headers: { 'x-tidara-phone': sessionHeader },
-      });
-
-      if (edgeErr) {
-        return { success: false, error: edgeErr.message };
-      }
-
-      return {
-        success: edgeData?.success === true,
-        balance: edgeData?.balance,
-        error: edgeData?.success === false ? (edgeData?.error || edgeData?.message) : undefined,
-      };
+    if (!paymentId) {
+      return { success: false, error: 'Valid paymentId required. Arbitrary credits are not permitted.' };
     }
 
-    // No paymentId → compensating rollback credit (called from handleWalletPayment rollback)
     const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('razorpay-order', {
       body: {
-        action: 'rollback-credit',
-        amount: Math.round(amount),
-        description: description || 'Auto-Refund',
+        action: 'verify-and-credit',
+        paymentId,
       },
-      headers: { 'x-tidara-phone': sessionHeader },
+      headers: getAuthHeaders(),
     });
 
     if (edgeErr) {
@@ -303,6 +264,52 @@ export async function creditWallet(
     };
   } catch (err: any) {
     return { success: false, error: err?.message };
+  }
+}
+
+/**
+ * Atomic Wallet Booking Transaction (X2).
+ * Deducts wallet balance and inserts all booking rows in a single atomic DB transaction.
+ * Eliminates client-side rollbacks entirely.
+ */
+export async function bookWithWallet(
+  total: number,
+  items: Array<{
+    service_id: string;
+    service_name: string;
+    price: number;
+    quantity: number;
+    duration: string;
+    slot_label: string;
+    scheduled_at: string;
+    address: string;
+  }>
+): Promise<{ success: boolean; remaining?: number; error?: string }> {
+  try {
+    if (total <= 0 || !items || items.length === 0) {
+      return { success: false, error: 'Valid total and items required' };
+    }
+
+    const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('razorpay-order', {
+      body: {
+        action: 'wallet-booking',
+        total: Math.round(total),
+        items,
+      },
+      headers: getAuthHeaders(),
+    });
+
+    if (edgeErr) {
+      return { success: false, error: edgeErr.message || 'Wallet booking request failed' };
+    }
+
+    return {
+      success: edgeData?.success === true,
+      remaining: edgeData?.remaining,
+      error: edgeData?.success === false ? (edgeData?.error || edgeData?.message) : undefined,
+    };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Wallet booking failed' };
   }
 }
 
@@ -338,19 +345,20 @@ export async function getUserBookings(phone: string) {
       .order('created_at', { ascending: false });
     return { data, error };
   } catch (err: any) {
-    return { data: [], error: err };
+    return { data: null, error: err };
   }
 }
 
 export async function createBooking(booking: Omit<Booking, 'id' | 'created_at'>) {
   try {
     const canonicalPhone = normalizePhone(booking.user_phone);
+    const payload = {
+      ...booking,
+      user_phone: canonicalPhone,
+    };
     const { data, error } = await supabase
       .from('bookings')
-      .insert({
-        ...booking,
-        user_phone: canonicalPhone,
-      })
+      .insert(payload)
       .select()
       .maybeSingle();
     return { data, error };
@@ -359,12 +367,13 @@ export async function createBooking(booking: Omit<Booking, 'id' | 'created_at'>)
   }
 }
 
-export async function cancelBooking(id: string, userPhone: string) {
+export async function cancelBooking(id: string, userPhone: string): Promise<{ success: boolean; error: any }> {
   try {
-    const canonicalPhone = normalizePhone(userPhone);
-    if (!canonicalPhone || !id) {
-      return { success: false, data: null, error: new Error('User phone and booking ID are required') };
+    if (!id || !userPhone) {
+      return { success: false, error: new Error('Booking ID and Phone are required') };
     }
+    const canonicalPhone = normalizePhone(userPhone);
+
     const { data, error } = await supabase
       .from('bookings')
       .update({ status: 'cancelled' })
@@ -374,24 +383,47 @@ export async function cancelBooking(id: string, userPhone: string) {
       .select();
 
     if (error) {
-      return { success: false, data: null, error };
+      return { success: false, error };
     }
+
     if (!data || data.length === 0) {
-      return {
-        success: false,
-        data: null,
-        error: new Error('Booking could not be cancelled. Only upcoming bookings belonging to your account can be cancelled.'),
-      };
+      return { success: false, error: new Error('Booking not found or not in upcoming status') };
     }
-    return { success: true, data: data[0], error: null };
+
+    return { success: true, error: null };
   } catch (err: any) {
-    return { success: false, data: null, error: err };
+    return { success: false, error: err };
   }
 }
 
 // ----------------------------------------------------
-// Saved Addresses
+// Addresses
 // ----------------------------------------------------
+
+export interface UserAddress {
+  id?: string;
+  user_phone: string;
+  type: string;
+  address_line: string;
+  landmark?: string | null;
+  city: string;
+  is_default: boolean;
+  created_at?: string;
+}
+
+export async function getUserAddresses(phone: string) {
+  try {
+    const canonicalPhone = normalizePhone(phone);
+    const { data, error } = await supabase
+      .from('addresses')
+      .select('*')
+      .eq('user_phone', canonicalPhone)
+      .order('created_at', { ascending: false });
+    return { data, error };
+  } catch (err: any) {
+    return { data: null, error: err };
+  }
+}
 
 export interface SavedAddress {
   id?: string;
@@ -406,20 +438,6 @@ export interface SavedAddress {
   created_at?: string;
 }
 
-export async function getUserAddresses(phone: string) {
-  try {
-    const canonicalPhone = normalizePhone(phone);
-    const { data, error } = await supabase
-      .from('addresses')
-      .select('*')
-      .eq('user_phone', canonicalPhone)
-      .order('created_at', { ascending: false });
-    return { data: data || [], error };
-  } catch (err: any) {
-    return { data: [], error: err };
-  }
-}
-
 export async function saveUserAddress(address: SavedAddress) {
   try {
     const canonicalPhone = normalizePhone(address.user_phone);
@@ -431,6 +449,47 @@ export async function saveUserAddress(address: SavedAddress) {
       })
       .select()
       .maybeSingle();
+    return { data, error };
+  } catch (err: any) {
+    return { data: null, error: err };
+  }
+}
+
+export const addUserAddress = saveUserAddress;
+
+export async function deleteUserAddress(id: string) {
+  try {
+    const { data, error } = await supabase
+      .from('addresses')
+      .delete()
+      .eq('id', id);
+    return { data, error };
+  } catch (err: any) {
+    return { data: null, error: err };
+  }
+}
+
+// ----------------------------------------------------
+// Wallet Ledger
+// ----------------------------------------------------
+
+export interface WalletTransaction {
+  id: string;
+  user_phone: string;
+  amount: number;
+  type: 'credit' | 'debit';
+  description: string;
+  created_at: string;
+}
+
+export async function getWalletTransactions(phone: string) {
+  try {
+    const canonicalPhone = normalizePhone(phone);
+    const { data, error } = await supabase
+      .from('wallet_transactions')
+      .select('*')
+      .eq('user_phone', canonicalPhone)
+      .order('created_at', { ascending: false });
     return { data, error };
   } catch (err: any) {
     return { data: null, error: err };

@@ -103,9 +103,11 @@ interface AppState {
   passVisitsLeft: number;
 
   // ── Ephemeral state ──────────────────────────────────────────────────────
+  authToken: string | null;
   cartItems: CartItem[];
   bookingMode: 'Instant' | 'Scheduled' | 'Recurring';
   scheduledDays: string[];
+  scheduledDate: string | null;
   scheduledSlot: string | null;
   couponApplied: boolean;
   couponCode: string | null;
@@ -142,7 +144,9 @@ interface AppState {
   getCartCount: () => number;
   
   // Booking & Coupon Actions
+  setAuthToken: (token: string | null) => void;
   setBookingMode: (mode: 'Instant' | 'Scheduled' | 'Recurring') => void;
+  setScheduledDate: (date: string | null) => void;
   setScheduledSlot: (slot: string) => void;
   setRecurringSchedule: (days: string[], slot: string) => void;
   applyCoupon: (code: string, discount: number) => void;
@@ -169,8 +173,10 @@ export const useAppStore = create<AppState>()(
       hasTidaraPass: false,
       passVisitsLeft: 0,
       cartItems: [],
+      authToken: null,
       bookingMode: 'Instant',
       scheduledDays: ['Mon', 'Wed', 'Fri'],
+      scheduledDate: 'Tomorrow',
       scheduledSlot: '9:00 AM',
       couponApplied: false,
       couponCode: null,
@@ -314,7 +320,9 @@ export const useAppStore = create<AppState>()(
         get().cartItems.reduce((sum, item) => sum + item.quantity, 0),
 
       // ── Booking Schedule & Coupon ──────────────────────────────────────
+      setAuthToken: (token) => set({ authToken: token }),
       setBookingMode: (mode) => set({ bookingMode: mode }),
+      setScheduledDate: (date) => set({ scheduledDate: date }),
       setScheduledSlot: (slot) => set({ scheduledSlot: slot }),
       setRecurringSchedule: (days, slot) =>
         set({ scheduledDays: days, scheduledSlot: slot, bookingMode: 'Recurring' }),
@@ -331,6 +339,7 @@ export const useAppStore = create<AppState>()(
         }
         set({
           user: null,
+          authToken: null,
           isAuthenticated: false,
           cartItems: [],
           walletBalance: 0,
