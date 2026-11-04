@@ -158,8 +158,17 @@ CREATE POLICY "Allow anon to read own wallet transactions"
   TO anon 
   USING (true);
 
+-- Ensure unique payment_id on wallet transactions to prevent replay top-ups
+CREATE UNIQUE INDEX IF NOT EXISTS idx_wallet_tx_payment_id 
+  ON public.wallet_transactions(payment_id) 
+  WHERE payment_id IS NOT NULL;
+
+-- Restrict column-level UPDATE on public.users so anon key cannot arbitrarily overwrite wallet_balance (V4)
+REVOKE UPDATE ON public.users FROM anon, public;
+GRANT UPDATE (first_name, last_name, email, avatar_url, push_token) ON public.users TO anon;
+
 -- ====================================================
--- SECURITY DEFINER RPC Functions
+-- SECURITY DEFINER RPC Functions (Hardened for V1 & V4)
 -- ====================================================
 
 -- 1. Atomic Wallet Debit (Guards against client-side math and overdrafts)
@@ -171,6 +180,7 @@ CREATE OR REPLACE FUNCTION public.debit_wallet(
 RETURNS json
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_phone text;
@@ -206,39 +216,62 @@ BEGIN
 END;
 $$;
 
--- 2. Atomic Wallet Credit & Top-up with Ledger Entry
+-- 2. Atomic Wallet Credit & Top-up with Ledger Entry & Replay Idempotency
 CREATE OR REPLACE FUNCTION public.credit_wallet(
   p_phone text,
   p_amount numeric,
   p_bonus numeric DEFAULT 0,
-  p_description text DEFAULT 'Wallet Top-up'
+  p_description text DEFAULT 'Wallet Top-up',
+  p_payment_id text DEFAULT NULL
 )
 RETURNS json
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_phone text;
   v_total_credit numeric;
   v_new_balance numeric;
+  v_exists boolean;
 BEGIN
   v_phone := trim(p_phone);
   IF v_phone IS NULL OR length(v_phone) = 0 THEN
     RETURN json_build_object('success', false, 'error', 'Invalid phone number');
   END IF;
 
-  v_total_credit := p_amount + COALESCE(p_bonus, 0);
-  IF v_total_credit <= 0 THEN
+  -- Ensure user exists before performing credit
+  SELECT EXISTS(SELECT 1 FROM public.users WHERE phone = v_phone) INTO v_exists;
+  IF NOT v_exists THEN
+    RETURN json_build_object('success', false, 'error', 'User not found');
+  END IF;
+
+  -- Disallow zero or negative credits
+  IF p_amount <= 0 THEN
     RETURN json_build_object('success', false, 'error', 'Credit amount must be greater than zero');
   END IF;
+
+  IF COALESCE(p_bonus, 0) < 0 THEN
+    RETURN json_build_object('success', false, 'error', 'Bonus cannot be negative');
+  END IF;
+
+  -- Replay protection if payment_id is provided
+  IF p_payment_id IS NOT NULL AND length(trim(p_payment_id)) > 0 THEN
+    IF EXISTS(SELECT 1 FROM public.wallet_transactions WHERE payment_id = trim(p_payment_id)) THEN
+      SELECT wallet_balance INTO v_new_balance FROM public.users WHERE phone = v_phone;
+      RETURN json_build_object('success', true, 'balance', v_new_balance, 'note', 'Already credited');
+    END IF;
+  END IF;
+
+  v_total_credit := p_amount + COALESCE(p_bonus, 0);
 
   UPDATE public.users 
   SET wallet_balance = COALESCE(wallet_balance, 0) + v_total_credit 
   WHERE phone = v_phone
   RETURNING wallet_balance INTO v_new_balance;
 
-  INSERT INTO public.wallet_transactions (user_phone, amount, type, description)
-  VALUES (v_phone, v_total_credit, 'credit', p_description);
+  INSERT INTO public.wallet_transactions (user_phone, amount, type, description, payment_id)
+  VALUES (v_phone, v_total_credit, 'credit', p_description, NULLIF(trim(p_payment_id), ''));
 
   RETURN json_build_object('success', true, 'balance', v_new_balance);
 END;
@@ -249,6 +282,7 @@ CREATE OR REPLACE FUNCTION public.delete_user_account(p_phone text)
 RETURNS json
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_phone text;
@@ -259,18 +293,28 @@ BEGIN
     RETURN json_build_object('success', false, 'error', 'Invalid phone number');
   END IF;
 
+  -- Check user exists before deleting
+  IF NOT EXISTS (SELECT 1 FROM public.users WHERE phone = v_phone) THEN
+    RETURN json_build_object('success', false, 'error', 'User not found', 'deleted_rows', 0);
+  END IF;
+
   DELETE FROM public.addresses WHERE user_phone = v_phone;
   DELETE FROM public.bookings WHERE user_phone = v_phone;
   DELETE FROM public.wallet_transactions WHERE user_phone = v_phone;
   DELETE FROM public.users WHERE phone = v_phone;
   GET DIAGNOSTICS v_deleted = ROW_COUNT;
 
-  RETURN json_build_object('success', true, 'deleted_rows', v_deleted);
+  RETURN json_build_object('success', v_deleted > 0, 'deleted_rows', v_deleted);
 END;
 $$;
 
--- Grant execution permissions
-GRANT EXECUTE ON FUNCTION public.debit_wallet(text, numeric, text) TO anon;
-GRANT EXECUTE ON FUNCTION public.credit_wallet(text, numeric, numeric, text) TO anon;
-GRANT EXECUTE ON FUNCTION public.delete_user_account(text) TO anon;
+-- Revoke direct anon execute on critical financial and account deletion RPCs (V1)
+REVOKE EXECUTE ON FUNCTION public.debit_wallet(text, numeric, text) FROM anon, public;
+REVOKE EXECUTE ON FUNCTION public.credit_wallet(text, numeric, numeric, text, text) FROM anon, public;
+REVOKE EXECUTE ON FUNCTION public.delete_user_account(text) FROM anon, public;
+
+-- Grant execution permissions exclusively to service_role (invoked via Edge Functions)
+GRANT EXECUTE ON FUNCTION public.debit_wallet(text, numeric, text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.credit_wallet(text, numeric, numeric, text, text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.delete_user_account(text) TO service_role;
 

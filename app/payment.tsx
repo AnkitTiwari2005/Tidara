@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, formatCurrency } from '../constants/colors';
 import { useAppStore, showAppAlert } from '../store/useAppStore';
 import { createRazorpayOrder, getRazorpayCheckoutHTML } from '../lib/razorpay';
-import { createBooking, updateUserProfile, normalizePhone, debitWallet } from '../lib/supabase';
+import { createBooking, updateUserProfile, normalizePhone, debitWallet, creditWallet } from '../lib/supabase';
 import { sendLocalNotification } from '../lib/notifications';
 import RazorpayWebView from '../components/RazorpayWebView';
 import { SERVICES, FESTIVE_PACKS, PaymentIcons, BrandImages } from '../constants/services';
@@ -117,6 +117,28 @@ export default function PaymentScreen() {
     );
   }
 
+  /* Parse slot like '9:00 AM' or '2:00 PM' into an accurate future Date (V8) */
+  const parseSlotToDate = (slot?: string | null, daysAhead: number = 1): Date => {
+    const target = new Date();
+    target.setDate(target.getDate() + daysAhead);
+    if (!slot) {
+      target.setHours(9, 0, 0, 0);
+      return target;
+    }
+    const match = slot.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+    if (match) {
+      let hours = parseInt(match[1], 10);
+      const minutes = parseInt(match[2], 10);
+      const meridian = match[3].toUpperCase();
+      if (meridian === 'PM' && hours < 12) hours += 12;
+      if (meridian === 'AM' && hours === 12) hours = 0;
+      target.setHours(hours, minutes, 0, 0);
+    } else {
+      target.setHours(9, 0, 0, 0);
+    }
+    return target;
+  };
+
   /* Save booking to Supabase with real ISO timestamps and transaction verification */
   const saveBookingToDB = async (
     paymentMethod: string,
@@ -134,14 +156,10 @@ export default function PaymentScreen() {
 
     if (bookingMode === 'Recurring') {
       scheduledDisplay = `Recurring: ${scheduledDays?.join(', ') || 'Weekly'} @ ${scheduledSlot || '9:00 AM'}`;
-      const target = new Date();
-      target.setDate(target.getDate() + 1);
-      scheduledIso = target.toISOString();
+      scheduledIso = parseSlotToDate(scheduledSlot, 1).toISOString();
     } else if (bookingMode === 'Scheduled') {
       scheduledDisplay = `Scheduled Slot: ${scheduledSlot || 'Standard Slot'}`;
-      const target = new Date();
-      target.setDate(target.getDate() + 1);
-      scheduledIso = target.toISOString();
+      scheduledIso = parseSlotToDate(scheduledSlot, 1).toISOString();
     }
 
     const deliveryAddress = location?.address || 'Confirmed Service Address';
@@ -173,8 +191,14 @@ export default function PaymentScreen() {
       const hasPass = cartDetails.some((item) => item.id === 'tidara_pass_3');
       if (hasPass) {
         useAppStore.getState().setTidaraPass(true, 3);
-        sendLocalNotification('Booking Confirmed! 🎉', `Your visit for ${cartDetails.map((i) => i.name).join(', ')} is confirmed. Our pro is on the way!`, { screen: 'bookings' });
       }
+      // Send booking confirmation notification to all successful bookings (V5)
+      const serviceSummary = cartDetails.map((i) => i.name).join(', ');
+      sendLocalNotification(
+        'Booking Confirmed! 🎉',
+        `Your visit for ${serviceSummary} has been booked.`,
+        { screen: 'bookings' }
+      );
     }
 
     return !hasFailure;
@@ -214,7 +238,7 @@ export default function PaymentScreen() {
     }
   };
 
-  /* Wallet Payment Flow */
+  /* Wallet Payment Flow (Debit FIRST with strict verification and rollback - V2) */
   const handleWalletPayment = async () => {
     if (walletBalance < total) {
       showAppAlert(
@@ -228,22 +252,39 @@ export default function PaymentScreen() {
     }
     setLoading(true);
     try {
-      const saved = await saveBookingToDB('Tidara Wallet');
-      if (!saved) {
-        showAppAlert(
-          'Booking Failed',
-          'Unable to record your booking. Your wallet has not been charged.',
-          'error'
-        );
-        return;
-      }
-      
-      // Atomic wallet debit via server-side RPC function
+      // 1. Atomic wallet debit executed and verified FIRST (V2)
       const debitResult = await debitWallet(
         user!.phone,
         total,
         `Booking: ${cartDetails.map((i) => i.name).join(', ')}`
       );
+
+      if (!debitResult.success) {
+        showAppAlert(
+          'Wallet Payment Failed',
+          debitResult.error || 'Unable to debit your wallet. Your booking was not placed.',
+          'error'
+        );
+        return;
+      }
+
+      // 2. Persist booking to database
+      const saved = await saveBookingToDB('Tidara Wallet');
+      if (!saved) {
+        // Rollback debit if database insert failed
+        await creditWallet(
+          user!.phone,
+          total,
+          0,
+          `Auto-Refund: Booking failed for ${cartDetails.map((i) => i.name).join(', ')}`
+        );
+        showAppAlert(
+          'Booking Failed',
+          'Could not record your booking. Any deducted amount has been restored to your wallet.',
+          'error'
+        );
+        return;
+      }
 
       const remaining = typeof debitResult.remaining === 'number'
         ? debitResult.remaining

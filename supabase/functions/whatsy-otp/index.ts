@@ -1,5 +1,5 @@
 // Supabase Edge Function: whatsy-otp
-// Securely proxies OTP send & OTP verify requests to Whatsy without exposing WHATSY_API_KEY.
+// Securely proxies OTP send & verify requests to Whatsy without exposing WHATSY_API_KEY.
 // Arbitrary notification dispatching is excluded to prevent open WhatsApp relay abuse.
 
 const corsHeaders = {
@@ -26,8 +26,16 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const action = body.action;
-    const rawPhone = body.phone || body.recipient;
 
+    // Health / service status check (does not require phone number)
+    if (action === 'status') {
+      return new Response(
+        JSON.stringify({ ok: true, success: true, service: 'whatsy-otp' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const rawPhone = body.phone || body.recipient;
     if (!rawPhone) {
       return new Response(
         JSON.stringify({ success: false, message: 'Valid phone number is required' }),
@@ -100,7 +108,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ success: false, message: 'Invalid action. Must be "send" or "verify"' }),
+      JSON.stringify({ success: false, message: 'Invalid action. Must be "send", "verify", or "status"' }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err: any) {

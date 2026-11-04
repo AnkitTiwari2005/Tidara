@@ -160,10 +160,12 @@ export default function ProfileScreen() {
           style: 'destructive',
           onPress: async () => {
             setSaving(true);
+            // Clear push token before account deletion (V10)
+            await updateUserProfile(user.phone, { push_token: null }).catch(() => {});
             const { success, error } = await deleteUserAccount(user.phone);
             setSaving(false);
             if (!success) {
-              Alert.alert('Error', 'Could not delete account. Please try again.');
+              Alert.alert('Deletion Failed', error?.message || 'Could not delete account. Please try again.');
               return;
             }
             logout();

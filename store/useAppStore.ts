@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import * as SecureStore from 'expo-secure-store';
 import { Ionicons } from '@expo/vector-icons';
-import { getUserByPhone, upsertUserProfile, normalizePhone } from '../lib/supabase';
+import { getUserByPhone, upsertUserProfile, updateUserProfile, normalizePhone } from '../lib/supabase';
 
 // ─── Custom SecureStore Adapter with Safe Fallback ────────────────────────────
 
@@ -323,6 +323,10 @@ export const useAppStore = create<AppState>()(
 
       // ── Auth ───────────────────────────────────────────────────────────
       logout: () => {
+        const currentUser = get().user;
+        if (currentUser?.phone) {
+          updateUserProfile(currentUser.phone, { push_token: null }).catch(() => {});
+        }
         set({
           user: null,
           isAuthenticated: false,

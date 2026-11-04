@@ -95,26 +95,56 @@ export default function MoneyScreen() {
 
   const onPaymentSuccess = async (_data: { paymentId: string }) => {
     setRazorpayHtml(null);
-    let updatedBalance = walletBalance + totalCredit;
 
-    if (user?.phone) {
-      const creditRes = await creditWallet(user.phone, displayAmount, bonusAmount, 'Razorpay Top-up');
-      if (typeof creditRes.balance === 'number') {
-        updatedBalance = creditRes.balance;
-      }
+    if (!user?.phone) {
+      showAppAlert('Account Required', 'Please log in to sync your wallet top-up.', 'warning');
+      return;
     }
-    setWalletBalance(updatedBalance);
-    sendLocalNotification('Wallet Credited! 💳', `${formatCurrency(totalCredit)} added to your Tidara Wallet.`);
 
-    showAppAlert(
-      'Wallet Loaded Successfully',
-      `${formatCurrency(totalCredit)} has been credited to your wallet${
-        bonusAmount > 0 ? ` (includes ${formatCurrency(bonusAmount)} bonus cashback)` : ''
-      }.\n\nUpdated Balance: ${formatCurrency(updatedBalance)}`,
-      'success',
-      [{ text: 'Great!' }],
-      { icon: 'wallet-outline' }
-    );
+    setLoading(true);
+    try {
+      const creditRes = await creditWallet(
+        user.phone,
+        displayAmount,
+        bonusAmount,
+        'Razorpay Top-up',
+        _data.paymentId
+      );
+
+      if (!creditRes.success) {
+        showAppAlert(
+          'Top-up Pending Verification',
+          `Payment ID: ${_data.paymentId}\n\nYour payment was processed, but wallet credit confirmation is delayed. If your balance does not update shortly, please contact 24/7 support with this Payment ID.`,
+          'warning'
+        );
+        return;
+      }
+
+      const updatedBalance = typeof creditRes.balance === 'number'
+        ? creditRes.balance
+        : walletBalance + totalCredit;
+
+      setWalletBalance(updatedBalance);
+      sendLocalNotification('Wallet Credited! 💳', `${formatCurrency(totalCredit)} added to your Tidara Wallet.`);
+
+      showAppAlert(
+        'Wallet Loaded Successfully',
+        `${formatCurrency(totalCredit)} has been credited to your wallet${
+          bonusAmount > 0 ? ` (includes ${formatCurrency(bonusAmount)} bonus cashback)` : ''
+        }.\n\nUpdated Balance: ${formatCurrency(updatedBalance)}`,
+        'success',
+        [{ text: 'Great!' }],
+        { icon: 'wallet-outline' }
+      );
+    } catch {
+      showAppAlert(
+        'Network Sync Delay',
+        `Payment ID: ${_data.paymentId}\n\nPayment was accepted by gateway. Your balance will sync momentarily.`,
+        'warning'
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   const onPaymentFailure = (error: string | null, cancelled?: boolean) => {

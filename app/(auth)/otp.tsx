@@ -70,7 +70,9 @@ export default function OTPScreen() {
 
     // Handles full paste or SMS autofill (all 6 digits)
     if (clean.length >= OTP_LENGTH) {
-      const digits = clean.slice(0, OTP_LENGTH).split('');
+      // If pasting into a cell that already held a digit (e.g. 7 digits), take the 6 pasted digits cleanly (V13)
+      const targetStr = clean.length > OTP_LENGTH ? clean.slice(-OTP_LENGTH) : clean.slice(0, OTP_LENGTH);
+      const digits = targetStr.split('');
       const newOtp = Array(OTP_LENGTH).fill('');
       digits.forEach((d, i) => {
         newOtp[i] = d;
@@ -206,7 +208,7 @@ export default function OTPScreen() {
                   error ? styles.otpBoxError : null,
                 ]}
                 keyboardType="number-pad"
-                maxLength={6}
+                maxLength={12}
                 textContentType="oneTimeCode"
                 autoComplete="sms-otp"
                 value={digit}

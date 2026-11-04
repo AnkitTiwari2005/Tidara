@@ -106,49 +106,125 @@ export async function updateUserProfile(
   }
 }
 
-export async function deleteUserAccount(phone: string) {
+export async function deleteUserAccount(phone: string): Promise<{ success: boolean; error: any }> {
   try {
     const canonicalPhone = normalizePhone(phone);
-    // Call server-side SECURITY DEFINER RPC to ensure real deletion bypassing client RLS limits
+    if (!canonicalPhone) {
+      return { success: false, error: new Error('Invalid phone number') };
+    }
+
+    // Attempt through edge function first (invoked via service_role)
+    const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('razorpay-order', {
+      body: { action: 'delete-account', phone: canonicalPhone },
+    });
+
+    if (!edgeErr && edgeData) {
+      const isSuccess = edgeData.success === true && (edgeData.deleted_rows ?? 0) > 0;
+      return {
+        success: isSuccess,
+        error: isSuccess ? null : new Error(edgeData.error || 'Account not found or no records deleted'),
+      };
+    }
+
+    // Fallback directly to RPC (if edge function is unavailable)
     const { data, error } = await supabase.rpc('delete_user_account', { p_phone: canonicalPhone });
     if (error) {
-      // Fallback direct delete for backwards compatibility
-      await supabase.from('addresses').delete().eq('user_phone', canonicalPhone);
-      await supabase.from('bookings').delete().eq('user_phone', canonicalPhone);
-      const { error: userErr } = await supabase.from('users').delete().eq('phone', canonicalPhone);
-      return { success: !userErr, error: userErr };
+      return { success: false, error };
     }
-    return { success: data?.success ?? true, error: null };
+    const isSuccess = data?.success === true && (data?.deleted_rows ?? 0) > 0;
+    return {
+      success: isSuccess,
+      error: isSuccess ? null : new Error(data?.error || 'Account not found or no records deleted'),
+    };
   } catch (err: any) {
     return { success: false, error: err };
   }
 }
 
-export async function debitWallet(phone: string, amount: number, description?: string) {
+export async function debitWallet(
+  phone: string,
+  amount: number,
+  description?: string
+): Promise<{ success: boolean; remaining?: number; error?: any }> {
   try {
     const canonicalPhone = normalizePhone(phone);
+    if (!canonicalPhone || amount <= 0) {
+      return { success: false, error: 'Valid phone and positive amount are required' };
+    }
+
+    // Attempt through edge function first (invoked via service_role)
+    const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('razorpay-order', {
+      body: {
+        action: 'debit-wallet',
+        phone: canonicalPhone,
+        amount: Math.round(amount),
+        description: description || 'Service Booking Payment',
+      },
+    });
+
+    if (!edgeErr && edgeData) {
+      return {
+        success: edgeData.success === true,
+        remaining: edgeData.remaining,
+        error: edgeData.error,
+      };
+    }
+
+    // Direct RPC fallback
     const { data, error } = await supabase.rpc('debit_wallet', {
       p_phone: canonicalPhone,
       p_amount: Math.round(amount),
       p_description: description || 'Service Booking Payment',
     });
-    if (error) return { success: false, error };
+    if (error) return { success: false, error: error.message };
     return { success: data?.success ?? false, remaining: data?.remaining, error: data?.error };
   } catch (err: any) {
     return { success: false, error: err?.message };
   }
 }
 
-export async function creditWallet(phone: string, amount: number, bonus: number, description?: string) {
+export async function creditWallet(
+  phone: string,
+  amount: number,
+  bonus: number,
+  description?: string,
+  paymentId?: string
+): Promise<{ success: boolean; balance?: number; error?: any }> {
   try {
     const canonicalPhone = normalizePhone(phone);
+    if (!canonicalPhone || amount <= 0) {
+      return { success: false, error: 'Valid phone and positive amount are required' };
+    }
+
+    // Attempt through edge function first (verifies payment and credits with service_role)
+    const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('razorpay-order', {
+      body: {
+        action: 'verify-and-credit',
+        phone: canonicalPhone,
+        amount: Math.round(amount),
+        bonus: Math.round(bonus),
+        description: description || 'Razorpay Top-up',
+        paymentId: paymentId || undefined,
+      },
+    });
+
+    if (!edgeErr && edgeData) {
+      return {
+        success: edgeData.success === true,
+        balance: edgeData.balance,
+        error: edgeData.error || edgeData.message,
+      };
+    }
+
+    // Direct RPC fallback
     const { data, error } = await supabase.rpc('credit_wallet', {
       p_phone: canonicalPhone,
       p_amount: Math.round(amount),
       p_bonus: Math.round(bonus),
       p_description: description || 'Wallet Top-up',
+      p_payment_id: paymentId || null,
     });
-    if (error) return { success: false, error };
+    if (error) return { success: false, error: error.message };
     return { success: data?.success ?? false, balance: data?.balance, error: data?.error };
   } catch (err: any) {
     return { success: false, error: err?.message };
@@ -208,16 +284,33 @@ export async function createBooking(booking: Omit<Booking, 'id' | 'created_at'>)
   }
 }
 
-export async function cancelBooking(id: string, userPhone?: string) {
+export async function cancelBooking(id: string, userPhone: string) {
   try {
-    let query = supabase.from('bookings').update({ status: 'cancelled' }).eq('id', id);
-    if (userPhone) {
-      query = query.eq('user_phone', normalizePhone(userPhone));
+    const canonicalPhone = normalizePhone(userPhone);
+    if (!canonicalPhone || !id) {
+      return { success: false, data: null, error: new Error('User phone and booking ID are required') };
     }
-    const { data, error } = await query.select();
-    return { data, error };
+    const { data, error } = await supabase
+      .from('bookings')
+      .update({ status: 'cancelled' })
+      .eq('id', id)
+      .eq('user_phone', canonicalPhone)
+      .eq('status', 'upcoming')
+      .select();
+
+    if (error) {
+      return { success: false, data: null, error };
+    }
+    if (!data || data.length === 0) {
+      return {
+        success: false,
+        data: null,
+        error: new Error('Booking could not be cancelled. Only upcoming bookings belonging to your account can be cancelled.'),
+      };
+    }
+    return { success: true, data: data[0], error: null };
   } catch (err: any) {
-    return { data: null, error: err };
+    return { success: false, data: null, error: err };
   }
 }
 

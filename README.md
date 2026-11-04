@@ -72,9 +72,9 @@ flowchart TD
 
 ### Key Security Measures
 1. **Edge-Isolated Credentials:** `WHATSY_API_KEY` and `RAZORPAY_KEY_SECRET` reside exclusively in Supabase Secrets Vault. The client app only uses the public Supabase Anon key and Razorpay Key ID.
-2. **PostgreSQL Row Level Security (RLS):** All tables (`users`, `bookings`, `addresses`, `wallet_transactions`) enforce authenticated and authorized data boundaries.
+2. **Server-Side Financial & Ledger Authority:** Wallet debits, credits, and account deletions are executed via `SECURITY DEFINER` procedures with `SET search_path = public` and restricted to the `service_role` edge executor. Direct client column updates to `wallet_balance` are revoked.
 3. **Database-Managed UUIDs:** Booking IDs and User IDs are generated via PostgreSQL `gen_random_uuid()` rather than untrusted client timestamps.
-4. **Non-Blocking Background Dispatch:** WhatsApp customer alerts are fired asynchronously so external gateway delays never affect checkout or booking transactions.
+4. **Isolated OTP Gateway:** Whatsy Edge Function is restricted strictly to 6-digit verification codes to prevent open messaging relay abuse.
 
 ---
 
@@ -91,9 +91,9 @@ flowchart TD
 - **Tidara Wallet:** Instant balance deduction with automatic balance synchronization and transaction logging.
 - **Cash / UPI on Delivery:** Hassle-free booking confirmation with zero upfront payment.
 
-### 3. Real-Time WhatsApp Notifications
-- **Booking Confirmed:** Dispatches detailed appointment summary (Services, Scheduled Time, Address, Amount, Payment Method) directly to the user's WhatsApp.
-- **Booking Cancelled:** Dispatches instant cancellation acknowledgement with refund timeline notices.
+### 3. Native In-App Notifications
+- **Booking Confirmed:** Dispatches instant local notification banner confirming service appointments.
+- **Booking Cancelled:** Dispatches status update on cancellation with upcoming-only state guards.
 
 ### 4. Booking & Order Management
 - View active **Upcoming** and **Previous** bookings.
@@ -154,8 +154,8 @@ tidara/
 
 | Function Name | Route | Supported Actions / Methods | Description |
 | :--- | :--- | :--- | :--- |
-| **`whatsy-otp`** | `/functions/v1/whatsy-otp` | `send`, `verify`, `send-notification` | Proxies WhatsApp OTPs & booking update alerts via Whatsy. |
-| **`razorpay-order`** | `/functions/v1/razorpay-order` | `POST` | Generates official Razorpay orders with server-side secrets. |
+| **`whatsy-otp`** | `/functions/v1/whatsy-otp` | `send`, `verify`, `status` | Proxies WhatsApp OTP delivery and verification securely. |
+| **`razorpay-order`** | `/functions/v1/razorpay-order` | `POST` (orders, verify-and-credit, debit, delete) | Creates orders, verifies Razorpay payments, and executes ledger RPCs with service-role. |
 
 ### 2. Required Supabase Secrets Vault Keys
 
@@ -163,15 +163,15 @@ Configure these in **Supabase Dashboard ➔ Project Settings ➔ Edge Functions 
 
 | Secret Key | Description | Example / Environment |
 | :--- | :--- | :--- |
-| `WHATSY_API_KEY` | Whatsy API Gateway Key | `NW7tDgtm...` |
-| `WHATSY_BASE` | Whatsy Base URL | `https://honeydew-butterfly-241889.hostingersite.com` |
+| `WHATSY_API_KEY` | Whatsy API Gateway Key | `your_whatsy_api_key_secret` |
+| `WHATSY_BASE` | Whatsy Base URL | `https://your-whatsy-gateway.example.com` |
 | `RAZORPAY_KEY_ID` | Razorpay Key ID | `rzp_test_...` (or `rzp_live_...`) |
-| `RAZORPAY_KEY_SECRET` | Razorpay Secret Key | `ldQc4Yaz...` |
+| `RAZORPAY_KEY_SECRET` | Razorpay Secret Key | `your_razorpay_key_secret` |
 
 ### 3. Automated Keep-Alive Cron Jobs
 
 To prevent free-tier inactivity sleeping, two automated jobs run via [cron-job.org](https://cron-job.org):
-1. **Whatsy Keep-Alive:** Pings `https://honeydew-butterfly-241889.hostingersite.com/api/v1/status` every 5 minutes.
+1. **Whatsy Keep-Alive:** Pings the gateway health endpoint every 5 minutes.
 2. **Supabase Keep-Alive:** Queries `https://<project-ref>.supabase.co/rest/v1/users?select=id&limit=1` daily with `apikey` header.
 
 ---

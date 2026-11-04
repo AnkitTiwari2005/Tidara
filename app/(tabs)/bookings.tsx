@@ -70,11 +70,15 @@ export default function BookingsScreen() {
           text: 'Cancel Service',
           style: 'destructive',
           onPress: async () => {
+            if (!user?.phone || !booking.id) {
+              showAppAlert('Account Required', 'Please log in to manage your bookings.', 'warning');
+              return;
+            }
             setLoading(true);
-            const { error } = await cancelBooking(booking.id!, user?.phone);
-            if (error) {
-              setLoading(false);
-              showAppAlert('Error', 'Could not cancel booking. Please try again.', 'error');
+            const res = await cancelBooking(booking.id, user.phone);
+            setLoading(false);
+            if (!res.success || res.error) {
+              showAppAlert('Cancellation Failed', res.error?.message || 'Could not cancel booking. Only upcoming bookings can be cancelled.', 'error');
               return;
             }
             await fetchBookings();

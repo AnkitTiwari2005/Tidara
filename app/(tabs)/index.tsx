@@ -34,8 +34,10 @@ const CARD_WIDTH = (width - 32 - 12) / 2;
 // Animated Service Card Component with Image
 function ServiceCard({ service }: { service: Service }) {
   const { addToCart, removeFromCart, cartItems } = useAppStore();
-  const cartItem = cartItems.find((i) => i.serviceId === service.id);
-  const qty = cartItem?.quantity ?? 0;
+  const matchingItems = cartItems.filter((i) => i.serviceId === service.id);
+  const qty = matchingItems.reduce((sum, i) => sum + i.quantity, 0);
+  const activeDuration = matchingItems[0]?.durationMinutes ?? 60;
+  const activeUnitPrice = matchingItems[0]?.unitPrice ?? service.price;
 
   return (
     <TouchableOpacity
@@ -105,7 +107,7 @@ function ServiceCard({ service }: { service: Service }) {
               <TouchableOpacity
                 onPress={(e) => {
                   e.stopPropagation?.();
-                  removeFromCart(service.id, 60);
+                  removeFromCart(service.id, activeDuration);
                 }}
                 style={styles.stepperBtn}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -118,7 +120,7 @@ function ServiceCard({ service }: { service: Service }) {
               <TouchableOpacity
                 onPress={(e) => {
                   e.stopPropagation?.();
-                  addToCart(service.id, undefined, service.price);
+                  addToCart(service.id, activeDuration, activeUnitPrice);
                 }}
                 style={styles.stepperBtn}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}

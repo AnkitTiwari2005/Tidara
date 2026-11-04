@@ -3,10 +3,9 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 
-// Configure foreground notification presentation
+// Configure foreground notification presentation (using current Expo banner/list standards)
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
     shouldShowBanner: true,

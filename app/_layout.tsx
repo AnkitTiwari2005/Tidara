@@ -27,14 +27,15 @@ export default function RootLayout() {
   const user = useAppStore((s) => s.user);
 
   useEffect(() => {
-    if (_hasHydrated) {
+    // Only register push notifications once authenticated and profile row exists (V10)
+    if (_hasHydrated && user?.phone && user?.firstName) {
       registerForPushNotificationsAsync().then((token) => {
         if (token && user?.phone) {
           updateUserProfile(user.phone, { push_token: token });
         }
       });
     }
-  }, [_hasHydrated, user?.phone]);
+  }, [_hasHydrated, user?.phone, user?.firstName]);
 
   useEffect(() => {
     if (_hasHydrated && fontsLoaded) {
