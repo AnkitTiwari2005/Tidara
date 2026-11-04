@@ -4,6 +4,11 @@ const SUPABASE_URL = 'https://nkhtxqomvxjqnfwvmjnv.supabase.co';
 const SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5raHR4cW9tdnhqcW5md3Ztam52Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMzMjI4NDMsImV4cCI6MjEwODg5ODg0M30.10tajWbgcvwzfXeJxBydA8eie5hR7pfjliEfyrxM4Js';
 
+// TIDARA_SESSION_SECRET: a 32-byte hex value embedded at build time.
+// Generate once: node -e "require('crypto').randomBytes(32).toString('hex')|cl"
+// Set identically in Supabase Secrets as TIDARA_SESSION_SECRET.
+const SESSION_SECRET = '382a026014863ffe311d8413799c04f3b418de244673310e4202f6fb7228f1f5';
+
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: false },
 });
@@ -24,6 +29,27 @@ export function normalizePhone(phone: string): string {
   return phone.startsWith('+') ? phone : `+${phone}`;
 }
 
+/**
+ * Build the X-Tidara-Phone header value: "phone:HMAC_HEX"
+ * The Edge Function verifies this to ensure the caller owns the phone in the request (W1).
+ */
+async function buildSessionHeader(phone: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const keyBytes = encoder.encode(SESSION_SECRET);
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyBytes,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signatureBytes = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(phone));
+  const sigHex = Array.from(new Uint8Array(signatureBytes))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+  return `${phone}:${sigHex}`;
+}
+
 // ----------------------------------------------------
 // User Profile
 // ----------------------------------------------------
@@ -39,28 +65,30 @@ export interface UserProfile {
   created_at?: string;
 }
 
-export async function upsertUserProfile(profile: Partial<UserProfile> & { phone: string; first_name: string }) {
+/**
+ * Creates a new user row (INSERT only, no upsert).
+ * This is used only for new-user sign-up. Never includes wallet_balance.
+ * Fixes W4: upsert was broken by column-level grant restrictions on phone.
+ */
+export async function insertUserProfile(
+  profile: { phone: string; first_name: string; last_name?: string; email?: string; id?: string }
+) {
   try {
     const canonicalPhone = normalizePhone(profile.phone);
     const payload: any = {
-      ...profile,
       phone: canonicalPhone,
+      first_name: profile.first_name,
     };
-
-    // If id is missing, empty, or not a valid UUID (e.g. client Date.now() timestamp), omit it
-    // so Postgres's default gen_random_uuid() safely generates a real UUID.
-    if (!payload.id || !UUID_REGEX.test(payload.id)) {
-      delete payload.id;
+    if (profile.last_name) payload.last_name = profile.last_name;
+    if (profile.email) payload.email = profile.email;
+    // Only include id if it is a valid UUID (server generates uuid if omitted)
+    if (profile.id && UUID_REGEX.test(profile.id)) {
+      payload.id = profile.id;
     }
-
-    // Ensure we don't accidentally send undefined properties as literal undefined
-    Object.keys(payload).forEach((key) => {
-      if (payload[key] === undefined) delete payload[key];
-    });
 
     const { data, error } = await supabase
       .from('users')
-      .upsert(payload, { onConflict: 'phone' })
+      .insert(payload)
       .select()
       .maybeSingle();
     return { data, error };
@@ -69,20 +97,11 @@ export async function upsertUserProfile(profile: Partial<UserProfile> & { phone:
   }
 }
 
-export async function getUserByPhone(phone: string) {
-  try {
-    const canonicalPhone = normalizePhone(phone);
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('phone', canonicalPhone)
-      .maybeSingle(); // maybeSingle returns null without throwing PGRST116 for new users
-    return { data, error };
-  } catch (err: any) {
-    return { data: null, error: err };
-  }
-}
-
+/**
+ * Updates an existing user's profile columns (never phone or wallet_balance).
+ * Used for profile edits and push token sync.
+ * Fixes W4: by never sending phone in the UPDATE payload.
+ */
 export async function updateUserProfile(
   phone: string,
   updates: Partial<UserProfile>
@@ -90,6 +109,10 @@ export async function updateUserProfile(
   try {
     const canonicalPhone = normalizePhone(phone);
     const payload: any = { ...updates };
+    // Never allow client to overwrite phone or wallet_balance via UPDATE
+    delete payload.phone;
+    delete payload.wallet_balance;
+    delete payload.id;
     Object.keys(payload).forEach((key) => {
       if (payload[key] === undefined) delete payload[key];
     });
@@ -106,6 +129,61 @@ export async function updateUserProfile(
   }
 }
 
+/**
+ * @deprecated Use insertUserProfile for new users, updateUserProfile for edits.
+ * Kept for backward compatibility in saveUserToDB but routes to the correct path.
+ */
+export async function upsertUserProfile(
+  profile: Partial<UserProfile> & { phone: string; first_name: string }
+) {
+  // If the user might already exist (we don't know), try UPDATE first, INSERT if 0 rows updated
+  try {
+    const canonicalPhone = normalizePhone(profile.phone);
+    const updatePayload: any = {
+      first_name: profile.first_name,
+    };
+    if (profile.last_name !== undefined) updatePayload.last_name = profile.last_name;
+    if (profile.email !== undefined) updatePayload.email = profile.email;
+    if (profile.push_token !== undefined) updatePayload.push_token = profile.push_token;
+
+    const { data: updateData, error: updateErr } = await supabase
+      .from('users')
+      .update(updatePayload)
+      .eq('phone', canonicalPhone)
+      .select()
+      .maybeSingle();
+
+    if (!updateErr && updateData) {
+      return { data: updateData, error: null };
+    }
+
+    // No existing row found — INSERT as new user
+    return await insertUserProfile({
+      phone: canonicalPhone,
+      first_name: profile.first_name,
+      last_name: profile.last_name ?? undefined,
+      email: profile.email ?? undefined,
+      id: profile.id,
+    });
+  } catch (err: any) {
+    return { data: null, error: err };
+  }
+}
+
+export async function getUserByPhone(phone: string) {
+  try {
+    const canonicalPhone = normalizePhone(phone);
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('phone', canonicalPhone)
+      .maybeSingle();
+    return { data, error };
+  } catch (err: any) {
+    return { data: null, error: err };
+  }
+}
+
 export async function deleteUserAccount(phone: string): Promise<{ success: boolean; error: any }> {
   try {
     const canonicalPhone = normalizePhone(phone);
@@ -113,28 +191,20 @@ export async function deleteUserAccount(phone: string): Promise<{ success: boole
       return { success: false, error: new Error('Invalid phone number') };
     }
 
-    // Attempt through edge function first (invoked via service_role)
+    const sessionHeader = await buildSessionHeader(canonicalPhone);
     const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('razorpay-order', {
-      body: { action: 'delete-account', phone: canonicalPhone },
+      body: { action: 'delete-account' },
+      headers: { 'x-tidara-phone': sessionHeader },
     });
 
-    if (!edgeErr && edgeData) {
-      const isSuccess = edgeData.success === true && (edgeData.deleted_rows ?? 0) > 0;
-      return {
-        success: isSuccess,
-        error: isSuccess ? null : new Error(edgeData.error || 'Account not found or no records deleted'),
-      };
+    if (edgeErr) {
+      return { success: false, error: edgeErr };
     }
 
-    // Fallback directly to RPC (if edge function is unavailable)
-    const { data, error } = await supabase.rpc('delete_user_account', { p_phone: canonicalPhone });
-    if (error) {
-      return { success: false, error };
-    }
-    const isSuccess = data?.success === true && (data?.deleted_rows ?? 0) > 0;
+    const isSuccess = edgeData?.success === true && (edgeData?.deleted_rows ?? 0) > 0;
     return {
       success: isSuccess,
-      error: isSuccess ? null : new Error(data?.error || 'Account not found or no records deleted'),
+      error: isSuccess ? null : new Error(edgeData?.message || edgeData?.error || 'Account not found or no records deleted'),
     };
   } catch (err: any) {
     return { success: false, error: err };
@@ -152,32 +222,25 @@ export async function debitWallet(
       return { success: false, error: 'Valid phone and positive amount are required' };
     }
 
-    // Attempt through edge function first (invoked via service_role)
+    const sessionHeader = await buildSessionHeader(canonicalPhone);
     const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('razorpay-order', {
       body: {
         action: 'debit-wallet',
-        phone: canonicalPhone,
         amount: Math.round(amount),
         description: description || 'Service Booking Payment',
       },
+      headers: { 'x-tidara-phone': sessionHeader },
     });
 
-    if (!edgeErr && edgeData) {
-      return {
-        success: edgeData.success === true,
-        remaining: edgeData.remaining,
-        error: edgeData.error,
-      };
+    if (edgeErr) {
+      return { success: false, error: edgeErr.message };
     }
 
-    // Direct RPC fallback
-    const { data, error } = await supabase.rpc('debit_wallet', {
-      p_phone: canonicalPhone,
-      p_amount: Math.round(amount),
-      p_description: description || 'Service Booking Payment',
-    });
-    if (error) return { success: false, error: error.message };
-    return { success: data?.success ?? false, remaining: data?.remaining, error: data?.error };
+    return {
+      success: edgeData?.success === true,
+      remaining: edgeData?.remaining,
+      error: edgeData?.success === false ? (edgeData?.error || edgeData?.message) : undefined,
+    };
   } catch (err: any) {
     return { success: false, error: err?.message };
   }
@@ -196,36 +259,48 @@ export async function creditWallet(
       return { success: false, error: 'Valid phone and positive amount are required' };
     }
 
-    // Attempt through edge function first (verifies payment and credits with service_role)
-    const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('razorpay-order', {
-      body: {
-        action: 'verify-and-credit',
-        phone: canonicalPhone,
-        amount: Math.round(amount),
-        bonus: Math.round(bonus),
-        description: description || 'Razorpay Top-up',
-        paymentId: paymentId || undefined,
-      },
-    });
+    const sessionHeader = await buildSessionHeader(canonicalPhone);
 
-    if (!edgeErr && edgeData) {
+    if (paymentId) {
+      // Verify-and-credit: server verifies the Razorpay payment and computes bonus itself (W2)
+      const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('razorpay-order', {
+        body: {
+          action: 'verify-and-credit',
+          paymentId,
+        },
+        headers: { 'x-tidara-phone': sessionHeader },
+      });
+
+      if (edgeErr) {
+        return { success: false, error: edgeErr.message };
+      }
+
       return {
-        success: edgeData.success === true,
-        balance: edgeData.balance,
-        error: edgeData.error || edgeData.message,
+        success: edgeData?.success === true,
+        balance: edgeData?.balance,
+        error: edgeData?.success === false ? (edgeData?.error || edgeData?.message) : undefined,
       };
     }
 
-    // Direct RPC fallback
-    const { data, error } = await supabase.rpc('credit_wallet', {
-      p_phone: canonicalPhone,
-      p_amount: Math.round(amount),
-      p_bonus: Math.round(bonus),
-      p_description: description || 'Wallet Top-up',
-      p_payment_id: paymentId || null,
+    // No paymentId → compensating rollback credit (called from handleWalletPayment rollback)
+    const { data: edgeData, error: edgeErr } = await supabase.functions.invoke('razorpay-order', {
+      body: {
+        action: 'rollback-credit',
+        amount: Math.round(amount),
+        description: description || 'Auto-Refund',
+      },
+      headers: { 'x-tidara-phone': sessionHeader },
     });
-    if (error) return { success: false, error: error.message };
-    return { success: data?.success ?? false, balance: data?.balance, error: data?.error };
+
+    if (edgeErr) {
+      return { success: false, error: edgeErr.message };
+    }
+
+    return {
+      success: edgeData?.success === true,
+      balance: edgeData?.balance,
+      error: edgeData?.success === false ? (edgeData?.error || edgeData?.message) : undefined,
+    };
   } catch (err: any) {
     return { success: false, error: err?.message };
   }
