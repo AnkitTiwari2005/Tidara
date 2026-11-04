@@ -231,6 +231,16 @@ function FestivePackCard({ pack }: { pack: FestivePack }) {
   );
 }
 
+
+const HOME_CATEGORIES: { id: string; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { id: 'all', label: 'All Services', icon: 'apps' },
+  { id: 'cleaning', label: 'Cleaning', icon: 'sparkles-outline' },
+  { id: 'kitchen', label: 'Kitchen &\nPrep', icon: 'restaurant-outline' },
+  { id: 'bathroom', label: 'Bathroom', icon: 'water-outline' },
+  { id: 'laundry', label: 'Laundry', icon: 'shirt-outline' },
+  { id: 'more', label: 'More', icon: 'ellipsis-horizontal' },
+];
+
 export default function HomeScreen() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -288,8 +298,16 @@ export default function HomeScreen() {
   const filteredServices = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return SERVICES.filter((s) => {
-      const matchesCategory =
-        selectedCategory === 'all' || s.category === selectedCategory;
+      let matchesCategory = false;
+      if (selectedCategory === 'all') {
+        matchesCategory = true;
+      } else if (selectedCategory === 'bathroom') {
+        matchesCategory = s.id === '2' || s.name.toLowerCase().includes('bath');
+      } else if (selectedCategory === 'more') {
+        matchesCategory = s.category === 'exterior';
+      } else {
+        matchesCategory = s.category === selectedCategory;
+      }
       const matchesSearch =
         q.length === 0 ||
         s.name.toLowerCase().includes(q) ||
@@ -322,57 +340,83 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.locationSelector}
-          onPress={() => setLocationModalVisible(true)}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel={`Selected location: ${currentCity}, ${currentAddress}`}
-        >
-          <View style={styles.locationPinBg}>
-            <Ionicons name="location" size={16} color={Colors.primary} />
-          </View>
-          <View style={styles.locationTextContainer}>
-            <View style={styles.cityRow}>
-              <Text style={styles.cityName}>{currentCity}</Text>
-              <Ionicons name="chevron-down" size={14} color={Colors.textPrimary} />
-            </View>
-            <Text style={styles.addressLine} numberOfLines={1}>
-              {currentAddress}
-            </Text>
-          </View>
-        </TouchableOpacity>
+      {/* Top Header with Soft Organic Green Aura */}
+      <View style={styles.topAuraContainer}>
+        <LinearGradient
+          colors={['#E6F7EC', '#F2FBF6', '#FFFFFF']}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0.2, y: 0 }}
+          end={{ x: 0.8, y: 1 }}
+        />
 
-        <View style={styles.headerActions}>
+        {/* Header Bar */}
+        <View style={styles.header}>
           <TouchableOpacity
-            style={styles.headerIconBtn}
-            onPress={() => setPassModalVisible(true)}
+            style={styles.locationSelector}
+            onPress={() => setLocationModalVisible(true)}
+            activeOpacity={0.7}
             accessibilityRole="button"
-            accessibilityLabel="View Tidara VIP Pass details"
+            accessibilityLabel={`Selected location: ${currentCity}, ${currentAddress}`}
           >
-            <Ionicons name="gift-outline" size={20} color={Colors.primary} />
-            <View style={styles.passMiniBadge}>
-              <Text style={styles.passMiniBadgeText}>VIP</Text>
+            <View style={styles.locationPinBg}>
+              <Ionicons name="location-sharp" size={18} color="#064E3B" />
+            </View>
+            <View style={styles.locationTextContainer}>
+              <View style={styles.cityRow}>
+                <Text style={styles.cityName}>{currentCity}</Text>
+                <Ionicons name="chevron-down" size={14} color="#111827" />
+              </View>
+              <Text style={styles.addressLine} numberOfLines={1}>
+                {currentAddress}
+              </Text>
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.avatarBtn}
-            onPress={() => router.push('/profile')}
-            accessibilityRole="button"
-            accessibilityLabel="Go to Profile"
-          >
-            <LinearGradient
-              colors={['#0B5335', '#063D26']}
-              style={styles.avatarGradient}
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.headerGiftBtn}
+              onPress={() => setPassModalVisible(true)}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="View Tidara VIP Pass details"
+            >
+              <Ionicons name="gift-outline" size={22} color="#059669" />
+              <View style={styles.vipPillBadge}>
+                <Text style={styles.vipPillBadgeText}>VIP</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.avatarCircle}
+              onPress={() => router.push('/profile')}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Go to Profile"
             >
               <Text style={styles.avatarText}>
-                {user?.firstName ? user.firstName[0].toUpperCase() : 'U'}
+                {user?.firstName ? user.firstName[0].toUpperCase() : 'A'}
               </Text>
-            </LinearGradient>
-          </TouchableOpacity>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Search Bar Capsule */}
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={20} color="#059669" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search for services (e.g., deep clean, ironing...)"
+            placeholderTextColor="#6B7280"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 ? (
+            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearSearchBtn}>
+              <Ionicons name="close-circle" size={18} color="#6B7280" />
+            </TouchableOpacity>
+          ) : (
+            <Ionicons name="mic" size={20} color="#059669" />
+          )}
         </View>
       </View>
 
@@ -381,109 +425,112 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Search Bar */}
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={18} color={Colors.textMuted} style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search 'deep clean', 'ironing', 'kitchen'..."
-            placeholderTextColor={Colors.textMuted}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearSearchBtn}>
-              <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
-            </TouchableOpacity>
-          )}
-        </View>
-
         {/* Photographic Hero Banner */}
-        <View style={styles.heroBannerCard}>
-          <Image
-            source={require('../../assets/images/hero_banner.jpg')}
-            style={styles.heroBannerImage}
-            resizeMode="cover"
-          />
-          <LinearGradient
-            colors={['rgba(6, 61, 38, 0.4)', 'rgba(4, 39, 26, 0.88)']}
-            style={styles.heroBannerGradient}
-          >
-            <View style={styles.heroBannerContent}>
-              <View style={styles.liveTagRow}>
-                <Image
-                  source={BrandImages.lightning}
-                  style={{ width: 15, height: 15, marginRight: 5 }}
-                  resizeMode="contain"
-                />
-                <Animated.View style={[styles.liveDot, { opacity: pulseAnim }]} />
-                <Text style={styles.liveTagText}>15-MIN EXPRESS ARRIVAL</Text>
+        <View style={styles.heroSection}>
+          <View style={styles.heroBannerCard}>
+            <Image
+              source={require('../../assets/images/hero_banner.jpg')}
+              style={styles.heroBannerImage}
+              resizeMode="cover"
+            />
+            <LinearGradient
+              colors={['#042F20', '#042F20', 'rgba(4, 47, 32, 0.94)', 'rgba(4, 47, 32, 0.35)', 'transparent']}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={styles.heroBannerGradient}
+            >
+              <View style={styles.heroBannerContent}>
+                {/* 15-Min Express Arrival Tag */}
+                <View style={styles.liveTagRow}>
+                  <Ionicons name="flash" size={12} color="#FBBF24" />
+                  <Text style={styles.liveTagText}>15-Min Express Arrival</Text>
+                </View>
+
+                {/* Main Headline */}
+                <Text style={styles.heroBannerTitle}>
+                  5-Star Certified Pros
+                  {'\n'}
+                  At Your Doorstep
+                </Text>
+
+                {/* Trust Markers Row */}
+                <View style={styles.trustBadgesRow}>
+                  <View style={styles.trustBadgeItem}>
+                    <Ionicons name="shield-checkmark-outline" size={13} color="#A7F3D0" />
+                    <Text style={styles.trustBadgeText}>100% Background-checked</Text>
+                  </View>
+                  <View style={styles.trustBadgeItem}>
+                    <View style={styles.rupeeCircle}>
+                      <Text style={styles.rupeeCircleText}>₹</Text>
+                    </View>
+                    <Text style={styles.trustBadgeText}>₹10,000 Safety Cover</Text>
+                  </View>
+                  <View style={styles.trustBadgeItem}>
+                    <Ionicons name="star" size={13} color="#FBBF24" />
+                    <Text style={styles.trustBadgeText}>4.9★ Avg. Rating</Text>
+                  </View>
+                </View>
+
+                {/* Book Now Button */}
+                <TouchableOpacity
+                  style={styles.bookNowBtn}
+                  onPress={() => {
+                    const firstSvc = SERVICES[0];
+                    if (firstSvc) router.push(`/service/${firstSvc.id}` as any);
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.bookNowText}>Book Now →</Text>
+                </TouchableOpacity>
               </View>
+            </LinearGradient>
+          </View>
 
-              <Text style={styles.heroBannerTitle}>
-                5-Star Certified Pros{'\n'}At Your Doorstep
-              </Text>
-
-              <Text style={styles.heroBannerSub}>
-                100% Background-checked • ₹10,000 Safety Cover
-              </Text>
-            </View>
-          </LinearGradient>
+          {/* Carousel Pagination Dots */}
+          <View style={styles.carouselDotsRow}>
+            <View style={[styles.dot, styles.dotActive]} />
+            <View style={styles.dot} />
+            <View style={styles.dot} />
+          </View>
         </View>
 
-        {/* Tidara VIP Pass Club Strip */}
-        <TouchableOpacity
-          style={styles.vipPassCard}
-          onPress={() => setPassModalVisible(true)}
-          activeOpacity={0.9}
-          accessibilityRole="button"
-          accessibilityLabel="Tidara Pass Club: 3 Home Visits for 177 rupees"
-        >
-          <LinearGradient
-            colors={['#FEF3C7', '#FDE68A']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.vipPassGradient}
-          >
-            <View style={styles.vipPassLeft}>
-              <View style={styles.vipTag}>
-                <Ionicons name="sparkles" size={12} color="#B45309" />
-                <Text style={styles.vipTagText}>TIDARA PASS CLUB</Text>
-              </View>
-              <Text style={styles.vipTitle}>3 Home Visits for ₹177 Only</Text>
-              <Text style={styles.vipDesc}>Save ₹573 on recurring cleaning & kitchen prep</Text>
-            </View>
-            <View style={styles.vipClaimBtn}>
-              <Text style={styles.vipClaimText}>View Pass →</Text>
-            </View>
-          </LinearGradient>
-        </TouchableOpacity>
-
-        {/* Category Filter Pills */}
-        <View style={styles.categorySection}>
+        {/* Category Squircles */}
+        <View style={styles.categoriesSection}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoryList}
+            contentContainerStyle={styles.categoryScroll}
           >
-            {CATEGORIES.map((cat) => {
-              const active = selectedCategory === cat.id;
+            {HOME_CATEGORIES.map((cat) => {
+              const isActive = selectedCategory === cat.id;
               return (
                 <TouchableOpacity
                   key={cat.id}
-                  style={[styles.categoryPill, active && styles.categoryPillActive]}
+                  style={[
+                    styles.categorySquircle,
+                    isActive && styles.categorySquircleActive,
+                  ]}
                   onPress={() => setSelectedCategory(cat.id)}
                   activeOpacity={0.8}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Filter by ${cat.label}`}
                 >
-                  <Ionicons
-                    name={cat.icon as any}
-                    size={15}
-                    color={active ? '#FFFFFF' : Colors.textSecondary}
-                  />
+                  <View
+                    style={[
+                      styles.categoryIconBox,
+                      isActive && styles.categoryIconBoxActive,
+                    ]}
+                  >
+                    <Ionicons
+                      name={cat.icon}
+                      size={22}
+                      color={isActive ? '#FFFFFF' : '#064E3B'}
+                    />
+                  </View>
                   <Text
-                    style={[styles.categoryPillText, active && styles.categoryPillTextActive]}
+                    style={[
+                      styles.categorySquircleLabel,
+                      isActive && styles.categorySquircleLabelActive,
+                    ]}
+                    numberOfLines={2}
                   >
                     {cat.label}
                   </Text>
@@ -493,13 +540,46 @@ export default function HomeScreen() {
           </ScrollView>
         </View>
 
+        {/* Tidara VIP Pass Club Strip */}
+        <TouchableOpacity
+          style={styles.passClubCard}
+          onPress={() => setPassModalVisible(true)}
+          activeOpacity={0.9}
+        >
+          <LinearGradient
+            colors={['#FFFDF5', '#FFFBEB', '#FEF3C7']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.passClubGradient}
+          >
+            <View style={styles.passClubLeft}>
+              <View style={styles.passClubCrownRow}>
+                <Text style={styles.passCrownEmoji}>👑</Text>
+                <Text style={styles.passClubTag}>TIDARA PASS CLUB</Text>
+              </View>
+              <Text style={styles.passClubTitle}>3 Home Visits for ₹177 Only</Text>
+              <Text style={styles.passClubSub}>Save ₹573 on recurring cleaning & kitchen prep</Text>
+            </View>
+
+            <View style={styles.passClubRight}>
+              <View style={styles.passTicketBadge}>
+                <Text style={styles.passTicketCrown}>👑</Text>
+                <Text style={styles.passTicketPrice}>₹177</Text>
+              </View>
+              <View style={styles.passChevronCircle}>
+                <Ionicons name="chevron-forward" size={14} color="#111827" />
+              </View>
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
+
         {/* Services Section Header */}
         <View style={styles.sectionHeader}>
           <View>
             <Text style={styles.sectionTitle}>
               {selectedCategory === 'all'
                 ? 'Curated Services'
-                : CATEGORIES.find((c) => c.id === selectedCategory)?.label}
+                : HOME_CATEGORIES.find((c) => c.id === selectedCategory)?.label.replace('\n', ' ')}
             </Text>
             <Text style={styles.sectionSubtitle}>
               {filteredServices.length} options ready for instant dispatch
@@ -624,15 +704,19 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
+  topAuraContainer: {
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    paddingBottom: 4,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    paddingTop: 8,
+    paddingBottom: 6,
   },
   locationSelector: {
     flexDirection: 'row',
@@ -641,10 +725,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   locationPinBg: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#ECFDF5',
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#DCFCE7',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -657,86 +741,88 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   cityName: {
-    fontSize: 15,
+    fontSize: 18,
     fontWeight: '800',
-    color: Colors.textPrimary,
+    color: '#111827',
+    letterSpacing: -0.2,
   },
   addressLine: {
     fontSize: 12,
-    color: Colors.textSecondary,
+    color: '#4B5563',
+    fontWeight: '500',
     marginTop: 1,
   },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
   },
-  headerIconBtn: {
+  headerGiftBtn: {
     position: 'relative',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F8FAFC',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  passMiniBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    backgroundColor: '#F59E0B',
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    borderRadius: 6,
-  },
-  passMiniBadgeText: {
-    fontSize: 7,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  avatarBtn: {
-    shadowColor: Colors.primary,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 2,
   },
-  avatarGradient: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  vipPillBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -2,
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  vipPillBadgeText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
+  },
+  avatarCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#064E3B',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#064E3B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
   },
   avatarText: {
-    fontSize: 14,
+    fontSize: 17,
     fontWeight: '800',
     color: '#FFFFFF',
-  },
-  scrollView: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-  },
-  scrollContent: {
-    paddingBottom: 110,
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    shadowColor: '#0F172A',
+    marginTop: 6,
+    marginBottom: 8,
+    paddingHorizontal: 16,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 1.5,
+    borderColor: '#A7F3D0',
+    shadowColor: '#064E3B',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
+    shadowOpacity: 0.06,
     shadowRadius: 6,
     elevation: 2,
   },
@@ -746,157 +832,284 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
-    color: Colors.textPrimary,
+    color: '#111827',
     fontWeight: '500',
   },
   clearSearchBtn: {
     padding: 4,
   },
+  heroSection: {
+    marginTop: 12,
+    marginBottom: 14,
+  },
   heroBannerCard: {
     marginHorizontal: 16,
-    marginBottom: 14,
-    height: 150,
-    borderRadius: 20,
+    height: 195,
+    borderRadius: 24,
     overflow: 'hidden',
-    position: 'relative',
-    shadowColor: Colors.primary,
+    backgroundColor: '#042F20',
+    shadowColor: '#042F20',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.25,
     shadowRadius: 10,
     elevation: 4,
+    position: 'relative',
   },
   heroBannerImage: {
-    width: '100%',
-    height: '100%',
     position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: '60%',
+    height: '100%',
   },
   heroBannerGradient: {
     flex: 1,
-    justifyContent: 'flex-end',
-    padding: 16,
+    justifyContent: 'center',
+    padding: 18,
   },
   heroBannerContent: {
-    gap: 4,
+    gap: 8,
+    maxWidth: '72%',
   },
   liveTagRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(16, 185, 129, 0.25)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 14,
     alignSelf: 'flex-start',
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.4)',
-  },
-  liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#10B981',
+    borderColor: 'rgba(255, 255, 255, 0.25)',
   },
   liveTagText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#A7F3D0',
-    letterSpacing: 0.5,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
   },
   heroBannerTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '900',
     color: '#FFFFFF',
     letterSpacing: -0.3,
-    lineHeight: 22,
+    lineHeight: 25,
   },
-  heroBannerSub: {
-    fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.85)',
+  trustBadgesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginVertical: 2,
+  },
+  trustBadgeItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  rupeeCircle: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rupeeCircleText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#A7F3D0',
+    lineHeight: 11,
+  },
+  trustBadgeText: {
+    fontSize: 10,
+    color: 'rgba(255, 255, 255, 0.9)',
     fontWeight: '600',
   },
-  vipPassCard: {
+  bookNowBtn: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  bookNowText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#064E3B',
+  },
+  carouselDotsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 10,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#CBD5E1',
+  },
+  dotActive: {
+    width: 16,
+    backgroundColor: '#064E3B',
+  },
+  categoriesSection: {
+    marginBottom: 14,
+  },
+  categoryScroll: {
+    paddingHorizontal: 16,
+    gap: 10,
+  },
+  categorySquircle: {
+    width: 68,
+    height: 78,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 6,
+    gap: 4,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  categorySquircleActive: {
+    backgroundColor: '#064E3B',
+    borderColor: '#064E3B',
+    shadowColor: '#064E3B',
+    shadowOpacity: 0.25,
+    elevation: 3,
+  },
+  categoryIconBox: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  categoryIconBoxActive: {},
+  categorySquircleLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#1F2937',
+    textAlign: 'center',
+    lineHeight: 13,
+  },
+  categorySquircleLabelActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  passClubCard: {
     marginHorizontal: 16,
     marginBottom: 16,
-    borderRadius: 16,
+    borderRadius: 18,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
     shadowColor: '#B45309',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 6,
     elevation: 2,
   },
-  vipPassGradient: {
+  passClubGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 14,
   },
-  vipPassLeft: {
+  passClubLeft: {
     flex: 1,
+    paddingRight: 8,
   },
-  vipTag: {
+  passClubCrownRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 3,
+  },
+  passCrownEmoji: {
+    fontSize: 12,
+  },
+  passClubTag: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#B45309',
+    letterSpacing: 0.5,
+  },
+  passClubTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#78350F',
+    letterSpacing: -0.2,
+  },
+  passClubSub: {
+    fontSize: 11,
+    color: '#92400E',
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  passClubRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  passTicketBadge: {
+    backgroundColor: '#F59E0B',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginBottom: 4,
+    transform: [{ rotate: '-4deg' }],
+    shadowColor: '#B45309',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 2,
   },
-  vipTagText: {
+  passTicketCrown: {
     fontSize: 10,
-    fontWeight: '800',
-    color: '#92400E',
-    letterSpacing: 0.5,
   },
-  vipTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#78350F',
-  },
-  vipDesc: {
-    fontSize: 11,
-    color: '#92400E',
-    marginTop: 1,
-  },
-  vipClaimBtn: {
-    backgroundColor: '#78350F',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  vipClaimText: {
-    fontSize: 11,
-    fontWeight: '700',
+  passTicketPrice: {
+    fontSize: 14,
+    fontWeight: '900',
     color: '#FFFFFF',
   },
-  categorySection: {
-    marginBottom: 16,
-  },
-  categoryList: {
-    paddingHorizontal: 16,
-    gap: 8,
-  },
-  categoryPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 20,
+  passChevronCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
   },
-  categoryPillActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+  scrollView: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
   },
-  categoryPillText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-  },
-  categoryPillTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '700',
+  scrollContent: {
+    paddingBottom: 110,
   },
   sectionHeader: {
     flexDirection: 'row',
