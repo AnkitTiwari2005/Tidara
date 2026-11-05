@@ -9,6 +9,7 @@ import {
   Image,
   Dimensions,
   Animated,
+  FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -27,6 +28,14 @@ import {
 import { useAppStore } from '../../store/useAppStore';
 import TidaraPassModal from '../../components/TidaraPassModal';
 import SelectLocationModal from '../../components/SelectLocationModal';
+import {
+  CrownSvg,
+  LightningSvg,
+  CalendarSvg,
+  ShieldCheckSvg,
+  RupeeCoverSvg,
+  StarSvg,
+} from '../../components/SvgIcons';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - 32 - 12) / 2;
@@ -241,16 +250,102 @@ const HOME_CATEGORIES: { id: string; label: string; icon: keyof typeof Ionicons.
   { id: 'more', label: 'More', icon: 'ellipsis-horizontal' },
 ];
 
+interface HeroSlide {
+  id: string;
+  image: any;
+  tag: string;
+  title: string;
+  trustBadges: {
+    icon: 'shield' | 'rupee' | 'star';
+    text: string;
+  }[];
+  btnText: string;
+  action: () => void;
+}
+
 export default function HomeScreen() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [passModalVisible, setPassModalVisible] = useState(false);
   const [locationModalVisible, setLocationModalVisible] = useState(false);
+  const [activeSlideIndex, setActiveSlideIndex] = useState(0);
 
   const { location, cartItems, user, addToCart } = useAppStore();
   const totalCartCount = useAppStore((state) => state.getCartCount());
   const currentCity = location?.city || 'Gurugram';
   const currentAddress = location?.address || 'Sector 48, Sohna Road';
+
+  const carouselRef = useRef<FlatList<HeroSlide>>(null);
+  const activeSlideRef = useRef(0);
+  activeSlideRef.current = activeSlideIndex;
+
+  const heroSlides: HeroSlide[] = useMemo(
+    () => [
+      {
+        id: 'slide-1',
+        image: require('../../assets/images/hero_banner.jpg'),
+        tag: '15-Min Express Arrival',
+        title: '5-Star Certified Pros\nAt Your Doorstep',
+        trustBadges: [
+          { icon: 'shield', text: '100% Background-checked' },
+          { icon: 'rupee', text: '₹10,000 Safety Cover' },
+          { icon: 'star', text: '4.9 Avg. Rating' },
+        ],
+        btnText: 'Book Now →',
+        action: () => {
+          const firstSvc = SERVICES[0];
+          if (firstSvc) router.push(`/service/${firstSvc.id}` as any);
+        },
+      },
+      {
+        id: 'slide-2',
+        image: require('../../assets/images/hero_banner2.jpg'),
+        tag: 'Instant Home Care',
+        title: 'Trained & Verified\nHome Assistants',
+        trustBadges: [
+          { icon: 'shield', text: 'Police Verified' },
+          { icon: 'rupee', text: 'Zero Hidden Fees' },
+          { icon: 'star', text: 'Top Rated Helpers' },
+        ],
+        btnText: 'Explore Helpers →',
+        action: () => {
+          setSelectedCategory('kitchen');
+        },
+      },
+      {
+        id: 'slide-3',
+        image: require('../../assets/images/hero_banner3.jpg'),
+        tag: 'Tidara Signature Clean',
+        title: 'Deep Cleaning &\nSpotless Spaces',
+        trustBadges: [
+          { icon: 'shield', text: 'Eco-Friendly Kits' },
+          { icon: 'rupee', text: 'Damage Protection' },
+          { icon: 'star', text: '100% Satisfaction' },
+        ],
+        btnText: 'Book Deep Clean →',
+        action: () => {
+          setSelectedCategory('cleaning');
+        },
+      },
+    ],
+    []
+  );
+
+  // Auto-advance hero banner carousel every 4.5 seconds
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const nextIndex = (activeSlideRef.current + 1) % heroSlides.length;
+      carouselRef.current?.scrollToIndex({ index: nextIndex, animated: true });
+      setActiveSlideIndex(nextIndex);
+    }, 4500);
+
+    return () => clearInterval(timer);
+  }, [heroSlides.length]);
+
+  const handleDotPress = (index: number) => {
+    carouselRef.current?.scrollToIndex({ index, animated: true });
+    setActiveSlideIndex(index);
+  };
 
   // Smooth Animations
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -423,72 +518,99 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Photographic Hero Banner */}
+        {/* Photographic Hero Banner Carousel */}
         <View style={styles.heroSection}>
-          <View style={styles.heroBannerCard}>
-            <Image
-              source={require('../../assets/images/hero_banner.jpg')}
-              style={styles.heroBannerImage}
-              resizeMode="cover"
-            />
-            <LinearGradient
-              colors={['#042F20', '#042F20', 'rgba(4, 47, 32, 0.94)', 'rgba(4, 47, 32, 0.35)', 'transparent']}
-              start={{ x: 0, y: 0.5 }}
-              end={{ x: 1, y: 0.5 }}
-              style={styles.heroBannerGradient}
-            >
-              <View style={styles.heroBannerContent}>
-                {/* 15-Min Express Arrival Tag */}
-                <View style={styles.liveTagRow}>
-                  <Ionicons name="flash" size={12} color="#FBBF24" />
-                  <Text style={styles.liveTagText}>15-Min Express Arrival</Text>
-                </View>
+          <FlatList
+            ref={carouselRef}
+            data={heroSlides}
+            keyExtractor={(item) => item.id}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            getItemLayout={(_, index) => ({
+              length: width,
+              offset: width * index,
+              index,
+            })}
+            onScrollToIndexFailed={(info) => {
+              setTimeout(() => {
+                carouselRef.current?.scrollToIndex({ index: info.index, animated: true });
+              }, 100);
+            }}
+            onMomentumScrollEnd={(e) => {
+              const offsetX = e.nativeEvent.contentOffset.x;
+              const idx = Math.round(offsetX / width);
+              if (idx >= 0 && idx < heroSlides.length) {
+                setActiveSlideIndex(idx);
+              }
+            }}
+            renderItem={({ item }) => (
+              <View style={{ width: width }}>
+                <View style={styles.heroBannerCard}>
+                  <Image
+                    source={item.image}
+                    style={styles.heroBannerImage}
+                    resizeMode="cover"
+                  />
+                  <LinearGradient
+                    colors={['#042F20', '#042F20', 'rgba(4, 47, 32, 0.94)', 'rgba(4, 47, 32, 0.35)', 'transparent']}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={styles.heroBannerGradient}
+                  >
+                    <View style={styles.heroBannerContent}>
+                      {/* Express / Feature Tag */}
+                      <View style={styles.liveTagRow}>
+                        <LightningSvg size={12} color="#FBBF24" />
+                        <Text style={styles.liveTagText}>{item.tag}</Text>
+                      </View>
 
-                {/* Main Headline */}
-                <Text style={styles.heroBannerTitle}>
-                  5-Star Certified Pros
-                  {'\n'}
-                  At Your Doorstep
-                </Text>
+                      {/* Main Headline */}
+                      <Text style={styles.heroBannerTitle}>
+                        {item.title}
+                      </Text>
 
-                {/* Trust Markers Row */}
-                <View style={styles.trustBadgesRow}>
-                  <View style={styles.trustBadgeItem}>
-                    <Ionicons name="shield-checkmark-outline" size={13} color="#A7F3D0" />
-                    <Text style={styles.trustBadgeText}>100% Background-checked</Text>
-                  </View>
-                  <View style={styles.trustBadgeItem}>
-                    <View style={styles.rupeeCircle}>
-                      <Text style={styles.rupeeCircleText}>₹</Text>
+                      {/* Trust Markers Row */}
+                      <View style={styles.trustBadgesRow}>
+                        {item.trustBadges.map((badge, bIdx) => (
+                          <View key={bIdx} style={styles.trustBadgeItem}>
+                            {badge.icon === 'shield' && <ShieldCheckSvg size={13} color="#A7F3D0" />}
+                            {badge.icon === 'rupee' && <RupeeCoverSvg size={14} color="#A7F3D0" />}
+                            {badge.icon === 'star' && <StarSvg size={13} color="#FBBF24" />}
+                            <Text style={styles.trustBadgeText}>{badge.text}</Text>
+                          </View>
+                        ))}
+                      </View>
+
+                      {/* CTA Button */}
+                      <TouchableOpacity
+                        style={styles.bookNowBtn}
+                        onPress={item.action}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={styles.bookNowText}>{item.btnText}</Text>
+                      </TouchableOpacity>
                     </View>
-                    <Text style={styles.trustBadgeText}>₹10,000 Safety Cover</Text>
-                  </View>
-                  <View style={styles.trustBadgeItem}>
-                    <Ionicons name="star" size={13} color="#FBBF24" />
-                    <Text style={styles.trustBadgeText}>4.9★ Avg. Rating</Text>
-                  </View>
+                  </LinearGradient>
                 </View>
-
-                {/* Book Now Button */}
-                <TouchableOpacity
-                  style={styles.bookNowBtn}
-                  onPress={() => {
-                    const firstSvc = SERVICES[0];
-                    if (firstSvc) router.push(`/service/${firstSvc.id}` as any);
-                  }}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.bookNowText}>Book Now →</Text>
-                </TouchableOpacity>
               </View>
-            </LinearGradient>
-          </View>
+            )}
+          />
 
-          {/* Carousel Pagination Dots */}
+          {/* Dynamic Carousel Pagination Dots */}
           <View style={styles.carouselDotsRow}>
-            <View style={[styles.dot, styles.dotActive]} />
-            <View style={styles.dot} />
-            <View style={styles.dot} />
+            {heroSlides.map((_, idx) => (
+              <TouchableOpacity
+                key={idx}
+                onPress={() => handleDotPress(idx)}
+                activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Go to slide ${idx + 1}`}
+              >
+                <View style={[styles.dot, activeSlideIndex === idx && styles.dotActive]} />
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
 
@@ -552,7 +674,7 @@ export default function HomeScreen() {
           >
             <View style={styles.passClubLeft}>
               <View style={styles.passClubCrownRow}>
-                <Text style={styles.passCrownEmoji}>👑</Text>
+                <CrownSvg size={14} color="#D97706" />
                 <Text style={styles.passClubTag}>TIDARA PASS CLUB</Text>
               </View>
               <Text style={styles.passClubTitle}>3 Home Visits for ₹177 Only</Text>
@@ -561,7 +683,7 @@ export default function HomeScreen() {
 
             <View style={styles.passClubRight}>
               <View style={styles.passTicketBadge}>
-                <Text style={styles.passTicketCrown}>👑</Text>
+                <CrownSvg size={12} color="#FFFFFF" />
                 <Text style={styles.passTicketPrice}>₹177</Text>
               </View>
               <View style={styles.passChevronCircle}>

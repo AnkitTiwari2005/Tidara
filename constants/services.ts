@@ -2,18 +2,18 @@
 import { Ionicons } from '@expo/vector-icons';
 
 export const ServiceImages = {
-  cleaning: require('../assets/images/services/cleaning.webp'),
-  bathroom: require('../assets/images/services/bathroom.webp'),
-  kitchen: require('../assets/images/services/kitchen.webp'),
-  utensils: require('../assets/images/services/utensils.webp'),
-  dusting: require('../assets/images/services/dusting.webp'),
-  mopping: require('../assets/images/services/mopping.webp'),
-  chopping: require('../assets/images/services/chopping.webp'),
-  laundry: require('../assets/images/services/laundry.webp'),
-  fan: require('../assets/images/services/fan.webp'),
-  window: require('../assets/images/services/window.webp'),
-  balcony: require('../assets/images/services/balcony.webp'),
-  staircase: require('../assets/images/services/staircase.webp'),
+  cleaning: require('../assets/images/services/cleaning.jpg'),
+  bathroom: require('../assets/images/services/bathroom.jpg'),
+  kitchen: require('../assets/images/services/kitchen.jpg'),
+  utensils: require('../assets/images/services/utensils.jpg'),
+  dusting: require('../assets/images/services/dusting.jpg'),
+  mopping: require('../assets/images/services/mopping.jpg'),
+  chopping: require('../assets/images/services/chopping.jpg'),
+  laundry: require('../assets/images/services/laundry.jpg'),
+  fan: require('../assets/images/services/fan.jpg'),
+  window: require('../assets/images/services/window.jpg'),
+  balcony: require('../assets/images/services/balcony.jpg'),
+  staircase: require('../assets/images/services/staircase.jpg'),
 };
 
 export const BrandImages = {

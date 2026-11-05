@@ -20,6 +20,7 @@ import { createBooking, updateUserProfile, normalizePhone, debitWallet, creditWa
 import { sendLocalNotification } from '../lib/notifications';
 import RazorpayWebView from '../components/RazorpayWebView';
 import { SERVICES, FESTIVE_PACKS, PaymentIcons, BrandImages, TIME_SLOTS } from '../constants/services';
+import { LightningSvg, CalendarSvg } from '../components/SvgIcons';
 
 type PaymentMethod = 'upi' | 'phonepe' | 'gpay' | 'paytm' | 'card' | 'cod' | 'wallet';
 
@@ -488,9 +489,16 @@ export default function PaymentScreen() {
                   accessibilityRole="radio"
                   accessibilityState={{ selected: bookingMode === mode }}
                 >
-                  <Text style={[styles.modePillText, bookingMode === mode && styles.modePillTextActive]}>
-                    {mode === 'Instant' ? '⚡ 15-Min Express' : '🗓 Scheduled Slot'}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    {mode === 'Instant' ? (
+                      <LightningSvg size={14} color={bookingMode === 'Instant' ? '#FFFFFF' : '#059669'} />
+                    ) : (
+                      <CalendarSvg size={14} color={bookingMode === 'Scheduled' ? '#FFFFFF' : '#059669'} />
+                    )}
+                    <Text style={[styles.modePillText, bookingMode === mode && styles.modePillTextActive]}>
+                      {mode === 'Instant' ? '15-Min Express' : 'Scheduled Slot'}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
               ))}
             </View>

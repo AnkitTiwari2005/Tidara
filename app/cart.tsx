@@ -380,7 +380,10 @@ export default function CartScreen() {
                   <Text style={styles.itemName} numberOfLines={1}>
                     {ci.service.name}
                   </Text>
-                  <Text style={styles.itemDuration}>⏱ {ci.service.duration}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Ionicons name="time-outline" size={12} color={Colors.textMuted} />
+                    <Text style={styles.itemDuration}>{ci.service.duration}</Text>
+                  </View>
                   <View style={styles.itemPriceRow}>
                     <Text style={styles.itemPrice}>
                       {formatCurrency(ci.service.price * ci.quantity)}
