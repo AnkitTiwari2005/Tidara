@@ -40,14 +40,13 @@ export default function ProfileSetupScreen() {
     setLoading(true);
     try {
       const canonicalPhone = normalizePhone(user?.phone ?? '');
-      // Never send empty string or non-UUID id; let Supabase Postgres gen_random_uuid() generate a real UUID
       const profilePayload: any = {
         phone: canonicalPhone,
         firstName: firstName.trim(),
         lastName: lastName.trim() || undefined,
         email: email.trim() || undefined,
       };
-      if (user?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(user.id)) {
+      if (user?.id) {
         profilePayload.id = user.id;
       }
       const result = await saveUserToDB(profilePayload);
@@ -55,7 +54,8 @@ export default function ProfileSetupScreen() {
       if (!result.success) {
         Alert.alert(
           'Save Failed',
-          'Could not save your profile to the cloud. Please check your internet connection and try again.'
+          result.error?.message ||
+            'Could not save your profile to the cloud. Please check your internet connection and try again.'
         );
         return;
       }

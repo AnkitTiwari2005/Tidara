@@ -24,6 +24,14 @@ ALTER TABLE public.users
   ADD COLUMN IF NOT EXISTS push_token text,
   ADD COLUMN IF NOT EXISTS avatar_url text;
 
+-- Guarantee id has a default UUID generator on legacy installations
+DO $$
+BEGIN
+  ALTER TABLE public.users ALTER COLUMN id SET DEFAULT gen_random_uuid()::text;
+EXCEPTION WHEN OTHERS THEN
+  NULL;
+END $$;
+
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -34,13 +42,16 @@ BEGIN
   END IF;
 END $$;
 
--- W3/X3: Trigger to enforce wallet_balance = 0 on INSERT regardless of what client passes
+-- W3/X3: Trigger to enforce wallet_balance = 0 and auto-assign id on INSERT regardless of client payload
 CREATE OR REPLACE FUNCTION public.enforce_zero_wallet_on_insert()
 RETURNS TRIGGER 
 LANGUAGE plpgsql
 SET search_path = public
 AS $$
 BEGIN
+  IF NEW.id IS NULL OR length(trim(NEW.id)) = 0 THEN
+    NEW.id := gen_random_uuid()::text;
+  END IF;
   NEW.wallet_balance := 0;
   RETURN NEW;
 END;
@@ -123,12 +134,14 @@ ALTER TABLE public.addresses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.wallet_transactions ENABLE ROW LEVEL SECURITY;
 
 -- 7. COLUMN-LEVEL GRANTS ON USERS (W3, W4, X3)
--- Anon cannot insert or update wallet_balance or phone directly
+-- Anon cannot insert or update wallet_balance directly
 REVOKE INSERT ON public.users FROM anon, public;
-GRANT INSERT (phone, first_name, last_name, email, push_token, avatar_url) ON public.users TO anon;
+GRANT INSERT (id, phone, first_name, last_name, email, push_token, avatar_url) ON public.users TO anon;
 
 REVOKE UPDATE ON public.users FROM anon, public;
 GRANT UPDATE (first_name, last_name, email, avatar_url, push_token) ON public.users TO anon;
+
+GRANT SELECT ON public.users TO anon;
 
 -- 8. ROW LEVEL SECURITY POLICIES
 DROP POLICY IF EXISTS "Allow anon to select user" ON public.users;

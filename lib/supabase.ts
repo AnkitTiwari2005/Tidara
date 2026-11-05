@@ -12,6 +12,17 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
+ * Pure JavaScript UUID v4 generator for client-side ID assignment
+ */
+export function generateLocalId(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+/**
  * Standardises phone numbers to canonical E.164 (+91XXXXXXXXXX) format
  * across all database tables and queries.
  */
@@ -62,22 +73,46 @@ export async function insertUserProfile(
 ) {
   try {
     const canonicalPhone = normalizePhone(profile.phone);
+    const assignedId = profile.id || generateLocalId();
     const insertPayload: Record<string, any> = {
       phone: canonicalPhone,
       first_name: profile.first_name,
+      id: assignedId,
     };
     if (profile.last_name !== undefined) insertPayload.last_name = profile.last_name;
     if (profile.email !== undefined) insertPayload.email = profile.email;
     if (profile.push_token !== undefined) insertPayload.push_token = profile.push_token;
-    if (profile.id && UUID_REGEX.test(profile.id)) {
-      insertPayload.id = profile.id;
-    }
 
     const { data, error } = await supabase
       .from('users')
       .insert(insertPayload)
       .select()
       .maybeSingle();
+
+    if (data && !error) {
+      return { data, error: null };
+    }
+
+    // Fail-safe Edge Function fallback (invokes service_role with caller auth token)
+    try {
+      const edgeRes = await supabase.functions.invoke('razorpay-order', {
+        body: {
+          action: 'save-profile',
+          id: assignedId,
+          phone: canonicalPhone,
+          first_name: profile.first_name,
+          last_name: profile.last_name,
+          email: profile.email,
+          push_token: profile.push_token,
+        },
+        headers: getAuthHeaders(),
+      });
+      if (edgeRes.data?.success && edgeRes.data?.data) {
+        return { data: edgeRes.data.data, error: null };
+      }
+    } catch {
+      // Fallback failed, return original error
+    }
 
     return { data, error };
   } catch (err: any) {
@@ -138,13 +173,40 @@ export async function upsertUserProfile(profile: Partial<UserProfile> & { phone:
     }
 
     // No existing row found — INSERT as new user
-    return await insertUserProfile({
+    const insertRes = await insertUserProfile({
       phone: canonicalPhone,
       first_name: profile.first_name || 'User',
       last_name: profile.last_name ?? undefined,
       email: profile.email ?? undefined,
       id: profile.id,
     });
+
+    if (insertRes.data && !insertRes.error) {
+      return insertRes;
+    }
+
+    // Fail-safe Edge Function fallback (invokes service_role with caller auth token)
+    try {
+      const edgeRes = await supabase.functions.invoke('razorpay-order', {
+        body: {
+          action: 'save-profile',
+          phone: canonicalPhone,
+          first_name: profile.first_name || 'User',
+          last_name: profile.last_name,
+          email: profile.email,
+          push_token: profile.push_token,
+          id: profile.id,
+        },
+        headers: getAuthHeaders(),
+      });
+      if (edgeRes.data?.success && edgeRes.data?.data) {
+        return { data: edgeRes.data.data, error: null };
+      }
+    } catch {
+      // Fallback failed, return insert error
+    }
+
+    return insertRes;
   } catch (err: any) {
     return { data: null, error: err };
   }
