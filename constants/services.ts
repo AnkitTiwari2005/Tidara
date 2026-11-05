@@ -26,6 +26,10 @@ export const BrandImages = {
   passFast: require('../assets/images/brand/pass_fast.webp'),
   passShield: require('../assets/images/brand/pass_shield.webp'),
   passDiscount: require('../assets/images/brand/pass_discount.webp'),
+  passClub: require('../assets/images/brand/pass_club.jpg'),
+  packMakeover: require('../assets/images/packs/pack_makeover.jpg'),
+  packPartyCleanup: require('../assets/images/packs/pack_party_cleanup.jpg'),
+  packMandir: require('../assets/images/packs/pack_mandir.jpg'),
   trustMarker1: require('../assets/images/brand/trust_marker1.webp'),
   trustMarker2: require('../assets/images/brand/trust_marker2.webp'),
   trustMarker3: require('../assets/images/brand/trust_marker3.webp'),
@@ -375,7 +379,7 @@ export const SERVICES: Service[] = [
     category: 'cleaning',
     description: 'VIP Club Pass: 3 dedicated 60-min home help sessions.',
     duration: '3 Visits',
-    imageUrl: BrandImages.passShield,
+    imageUrl: BrandImages.passClub,
     popular: true,
   },
 ];
@@ -391,7 +395,7 @@ export const FESTIVE_PACKS: FestivePack[] = [
     iconName: 'sparkles',
     gradientColors: ['#0B5335', '#042F2C'],
     description: 'Complete deep cleaning for Living Room, Kitchen & 2 Bathrooms.',
-    imageUrl: 'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=800&q=80',
+    imageUrl: BrandImages.packMakeover,
     badge: 'BESTSELLER',
   },
   {
@@ -404,7 +408,7 @@ export const FESTIVE_PACKS: FestivePack[] = [
     iconName: 'flash',
     gradientColors: ['#1E293B', '#0F172A'],
     description: 'Fast cleanup before or after guests: dishes, living room & trash removal.',
-    imageUrl: 'https://images.unsplash.com/photo-1584820927498-cfe5211fd8bf?auto=format&fit=crop&w=800&q=80',
+    imageUrl: BrandImages.packPartyCleanup,
     badge: 'EXPRESS',
   },
   {
@@ -417,7 +421,7 @@ export const FESTIVE_PACKS: FestivePack[] = [
     iconName: 'flame',
     gradientColors: ['#9A3412', '#7C2D12'],
     description: 'Brass & copper item polishing, marble cleanup & neat setup.',
-    imageUrl: 'https://images.unsplash.com/photo-1609137144813-7d9921338f24?auto=format&fit=crop&w=800&q=80',
+    imageUrl: BrandImages.packMandir,
     badge: 'POPULAR',
   },
 ];
